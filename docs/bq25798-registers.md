@@ -91,6 +91,12 @@ with a 1 mV or 1 mA LSB.
 - **`EN_MPPT` self-clears** when VBUS falls below `VBUS_PRESENT`.
 - **`SFET_PRESENT` gates `SDRV_CTRL` and `EN_BATOC`.** Both are locked at 0 until it is set,
   and it should only be set when an external ship FET is actually populated on `SDRV`.
+  `SDRV_CTRL` (`0x11[2:1]`): 0 idle · 1 shutdown · 2 ship mode · 3 system power reset.
+  `SDRV_DLY` (`0x11[0]`) adds a ~10 s delay before the action, and is 0 (delay on) at POR.
+  The IC ignores shutdown and ship mode while an adapter is present.
+- **`IBAT_OCP` is a fixed threshold of about 9.3 A** and is not adjustable. `EN_BATOC`
+  (`0x14[0]`) only decides whether crossing it opens the ship FET; the `IBAT_OCP_STAT` and
+  `IBAT_OCP_FLAG` bits report the event either way.
 - **`EN_IBAT` must be set** for the ADC to measure battery discharge current in
   battery-only or HIZ mode — exactly when that reading matters.
 - **`EN_EXTILIM` defaults to 1**, so an external `ILIM_HIZ` resistor divider is honoured

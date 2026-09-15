@@ -105,6 +105,15 @@ void BQ25798Component::configure_defaults_() {
   // nothing, so it follows the declared hardware.
   this->modify_u8_(REG14_CHG_CTRL5, 0x80, this->ship_fet_present_ ? 0x80 : 0x00);
 
+  if (this->ship_fet_present_) {
+    // Both of these are locked at 0 until SFET_PRESENT is set, so they are
+    // written after it rather than before.
+    this->modify_u8_(REG11_CHG_CTRL2, 0x01, this->ship_fet_action_delay_ ? 0x00 : 0x01);
+    this->modify_u8_(REG14_CHG_CTRL5, 0x01, this->battery_ocp_ ? 0x01 : 0x00);
+  } else if (this->battery_ocp_) {
+    ESP_LOGW(TAG, "battery_ocp needs a ship FET to act on; EN_BATOC stays locked at 0");
+  }
+
   // The charger powers up at the PROG pin's defaults, which for a 1s pack
   // means 4.2 V. A LiFePO4 pack needs its own limit applied before any
   // charging happens, so the chemistry-derived value is written here rather
@@ -529,6 +538,10 @@ void BQ25798Component::dump_config() {
   if (this->battery_capacity_ > 0)
     ESP_LOGCONFIG(TAG, "  Battery capacity: %u mAh", this->battery_capacity_);
   ESP_LOGCONFIG(TAG, "  Ship FET populated: %s", YESNO(this->ship_fet_present_));
+  if (this->ship_fet_present_) {
+    ESP_LOGCONFIG(TAG, "    Action delay: %s", this->ship_fet_action_delay_ ? "10 s" : "none");
+    ESP_LOGCONFIG(TAG, "    Battery OCP: %s", ONOFF(this->battery_ocp_));
+  }
   ESP_LOGCONFIG(TAG, "  Watchdog: %s", this->watchdog_ == 0 ? "disabled" : "enabled");
 }
 

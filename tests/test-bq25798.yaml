@@ -29,7 +29,9 @@ bq25798:
   chemistry: lifepo4
   cell_count: 1
   max_charge_current: 2000
-  ship_fet_present: false
+  ship_fet_present: true
+  ship_fet_action_delay: false
+  battery_ocp: true
   watchdog: disabled
   ts_resistor_upper: 5.23kOhm
   ts_resistor_lower: 30.1kOhm

@@ -77,7 +77,14 @@ applied inside every write, including the one restored at boot.
 **Ship mode needs a ship FET.** `ship_mode`, `shutdown` and `power_cycle` drive
 `SDRV_CTRL`, which the IC locks at `00` unless `SFET_PRESENT` is set — and setting that on
 a board with no external FET on `SDRV` just creates controls that silently do nothing. Set
-`ship_fet_present: true` only if the FET is actually populated.
+`ship_fet_present: true` only if the FET is actually populated; the component rejects those
+three controls without it rather than let them no-op.
+
+With a ship FET fitted, two more options open up. `ship_fet_action_delay: false` removes the
+charger's default ~10 s wait before it acts on `SDRV_CTRL`, which matters if `power_cycle`
+is being used as a reboot button. `battery_ocp: true` sets `EN_BATOC`, opening the ship FET
+above the IC's **fixed ~9.3 A** `IBAT_OCP` threshold — a dead-short backstop, not copper
+protection; `max_charge_current` is what guards the copper.
 
 **MPPT is exclusive and self-clearing.** `EN_MPPT`, `EN_ICO` and `FORCE_VINDPM_DET` are
 mutually exclusive; enabling MPPT clears the other two. The charger also clears `EN_MPPT`

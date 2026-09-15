@@ -193,6 +193,15 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // SDRV_CTRL (ship / shutdown / power reset) at 00 unless SFET_PRESENT is
   // set, and SFET_PRESENT is only meaningful if the FET actually exists.
   void set_ship_fet_present(bool present) { ship_fet_present_ = present; }
+  // SDRV_DLY. The charger waits about 10 s before acting on SDRV_CTRL by
+  // default, which is a long time to stare at a board you just asked to
+  // reboot. False removes the delay.
+  void set_ship_fet_action_delay(bool delay) { ship_fet_action_delay_ = delay; }
+  // EN_BATOC. Turns the ship FET off when the discharge current exceeds the
+  // IC's fixed IBAT_OCP threshold of about 9.3 A. Also gated by
+  // SFET_PRESENT. This is a short-circuit backstop, not copper protection:
+  // 9.3 A is well above what most board copper is rated for.
+  void set_battery_ocp(bool enable) { battery_ocp_ = enable; }
   // Watchdog period as the raw WATCHDOG_2:0 encoding. 0 disables it.
   // Anything non-zero is kicked on every update(); if the MCU stops talking,
   // the charger reverts ICHG and friends to their PROG-pin defaults.
@@ -293,6 +302,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   float charge_voltage_limit_{NAN};
   float default_charge_current_{NAN};
   bool ship_fet_present_{false};
+  bool ship_fet_action_delay_{true};
+  bool battery_ocp_{false};
   uint8_t watchdog_{0};
   bool setup_ok_{false};
   // MPPT self-clears when VBUS falls below the present threshold, so the

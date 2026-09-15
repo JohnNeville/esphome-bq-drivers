@@ -47,6 +47,8 @@ CONF_CELL_COUNT = "cell_count"
 CONF_CELL_VOLTAGE = "cell_voltage"
 CONF_DEFAULT_CHARGE_CURRENT = "default_charge_current"
 CONF_SHIP_FET_PRESENT = "ship_fet_present"
+CONF_SHIP_FET_ACTION_DELAY = "ship_fet_action_delay"
+CONF_BATTERY_OCP = "battery_ocp"
 CONF_WATCHDOG = "watchdog"
 CONF_TS_RESISTOR_UPPER = "ts_resistor_upper"
 CONF_TS_RESISTOR_LOWER = "ts_resistor_lower"
@@ -249,6 +251,25 @@ def _validate_chemistry(config):
     return config
 
 
+def _validate_ship_fet(config):
+    """The IC locks SDRV_CTRL at 00 unless SFET_PRESENT is set, so these
+    buttons would be controls that quietly do nothing."""
+    if config[CONF_SHIP_FET_PRESENT]:
+        return config
+    present = [
+        key
+        for key in (CONF_SHIP_MODE, CONF_SHUTDOWN, CONF_POWER_CYCLE)
+        if key in config
+    ]
+    if present:
+        raise cv.Invalid(
+            f"{', '.join(present)} drive SDRV_CTRL, which the charger locks at 00 unless "
+            f"'{CONF_SHIP_FET_PRESENT}' is true. Set it if a ship FET is populated on SDRV, "
+            f"or remove these controls."
+        )
+    return config
+
+
 def _validate_ts_network(config):
     """The battery temperature is derived from the TS divider, so the divider
     has to be described before the sensor can mean anything."""
@@ -292,6 +313,11 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_CELL_VOLTAGE): cv.float_range(min=3.0, max=4.7),
             cv.Optional(CONF_DEFAULT_CHARGE_CURRENT): cv.int_range(min=50, max=5000),
             cv.Optional(CONF_SHIP_FET_PRESENT, default=False): cv.boolean,
+            # The charger waits ~10 s before acting on SDRV_CTRL by default.
+            cv.Optional(CONF_SHIP_FET_ACTION_DELAY, default=True): cv.boolean,
+            # EN_BATOC. Fixed ~9.3 A threshold, so this is a short-circuit
+            # backstop rather than copper protection.
+            cv.Optional(CONF_BATTERY_OCP, default=False): cv.boolean,
             cv.Optional(CONF_WATCHDOG, default="disabled"): cv.one_of(
                 *WATCHDOG_OPTIONS, lower=True
             ),
@@ -439,6 +465,7 @@ CONFIG_SCHEMA = cv.All(
     .extend(cv.polling_component_schema("60s"))
     .extend(i2c.i2c_device_schema(0x6B)),
     _validate_chemistry,
+    _validate_ship_fet,
     _validate_ts_network,
 )
 
@@ -506,6 +533,8 @@ async def to_code(config):
         cg.add(var.set_battery_capacity(config[CONF_BATTERY_CAPACITY]))
     cg.add(var.set_max_charge_current(config[CONF_MAX_CHARGE_CURRENT]))
     cg.add(var.set_ship_fet_present(config[CONF_SHIP_FET_PRESENT]))
+    cg.add(var.set_ship_fet_action_delay(config[CONF_SHIP_FET_ACTION_DELAY]))
+    cg.add(var.set_battery_ocp(config[CONF_BATTERY_OCP]))
     if CONF_CHEMISTRY in config:
         per_cell = CHEMISTRY_CELL_VOLTAGE[config[CONF_CHEMISTRY]]
         if per_cell is None:
