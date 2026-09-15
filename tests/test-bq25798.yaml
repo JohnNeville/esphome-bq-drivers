@@ -1,0 +1,120 @@
+# Exercises every option the bq25798 schema accepts, so `esphome compile`
+# walks each generated C++ path.
+esphome:
+  name: test-bq25798
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [bq25798]
+
+i2c:
+  sda: GPIO2
+  scl: GPIO1
+  id: bus_internal
+
+bq25798:
+  i2c_id: bus_internal
+  address: 0x6B
+  update_interval: 15s
+  battery_capacity: 3000
+  chemistry: lifepo4
+  cell_count: 1
+  max_charge_current: 2000
+  ship_fet_present: false
+  watchdog: disabled
+  ts_resistor_upper: 5.23kOhm
+  ts_resistor_lower: 30.1kOhm
+  ts_nominal_resistance: 10kOhm
+  ts_beta: 3435
+
+  vbus_voltage:
+    name: "Bus Voltage"
+  vac1_voltage:
+    name: "VAC1 Voltage"
+  vac2_voltage:
+    name: "VAC2 Voltage"
+  vbat_voltage:
+    name: "Battery Voltage"
+  vsys_voltage:
+    name: "System Voltage"
+  ibus_current:
+    name: "Bus Current"
+  ibat_current:
+    name: "Battery Current"
+  battery_temperature:
+    name: "Battery Temperature"
+  die_temperature:
+    name: "Charger Die Temperature"
+
+  vbus_present:
+    name: "VBUS Present"
+  vac1_present:
+    name: "VAC1 Present"
+  vac2_present:
+    name: "VAC2 Present"
+  power_good:
+    name: "Power Good"
+  charging:
+    name: "Charging"
+  battery_present:
+    name: "Battery Present"
+  thermal_regulation:
+    name: "Thermal Regulation"
+
+  charge_status:
+    name: "Charge Status"
+  input_source:
+    name: "Input Source"
+  charger_fault:
+    name: "Charger Fault"
+
+  enable_charging:
+    name: "Enable Charging"
+    restore_mode: ALWAYS_ON
+  enable_hiz:
+    name: "HIZ Mode"
+  enable_mppt:
+    name: "Enable MPPT"
+  enable_stat_led:
+    name: "Status LED"
+  enable_acdrv1:
+    name: "Enable Input 1"
+  enable_acdrv2:
+    name: "Enable Input 2"
+  enable_ico:
+    name: "Enable ICO"
+
+  charge_current:
+    name: "Charge Current Limit"
+    max_value: 2000
+  input_current_limit:
+    name: "Input Current Limit"
+  vindpm:
+    name: "Input Voltage Limit"
+  min_system_voltage:
+    name: "Minimum System Voltage"
+
+  ship_mode:
+    name: "Ship Mode"
+  shutdown:
+    name: "Shutdown"
+  power_cycle:
+    name: "Power Cycle"
+  reset_registers:
+    name: "Reset Charger Registers"
+
+  mppt_voc_ratio:
+    name: "MPPT VOC Ratio"
+  mppt_voc_delay:
+    name: "MPPT VOC Delay"
+  mppt_voc_rate:
+    name: "MPPT VOC Rate"

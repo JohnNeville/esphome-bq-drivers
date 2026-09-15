@@ -1,0 +1,99 @@
+# Exercises every option the bq34z100 schema accepts, including the data
+# flash writes, so `esphome compile` walks each generated C++ path.
+esphome:
+  name: test-bq34z100
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [bq34z100]
+
+i2c:
+  sda: GPIO2
+  scl: GPIO1
+  id: bus_internal
+
+sensor:
+  - platform: bq34z100
+    i2c_id: bus_internal
+    address: 0x55
+    update_interval: 30s
+
+    # Data flash writes are gated behind apply_configuration.
+    apply_configuration: true
+    design_capacity: 6000
+    design_energy: 19200
+    cell_count: 1
+    sense_resistor: 10.0
+    voltage_divider: 5000
+    external_thermistor: true
+    lifepo4_relax: true
+    expected_chem_id: 0x0402
+
+    state_of_charge:
+      name: "Battery Level"
+    voltage:
+      name: "Battery Voltage (gauge)"
+    current:
+      name: "Battery Current"
+    average_current:
+      name: "Battery Average Current"
+    average_power:
+      name: "Battery Average Power"
+    temperature:
+      name: "Battery Temperature (gauge)"
+    internal_temperature:
+      name: "Gauge Internal Temperature"
+    remaining_capacity:
+      name: "Battery Remaining Capacity"
+    full_charge_capacity:
+      name: "Battery Full Charge Capacity"
+    available_energy:
+      name: "Battery Available Energy"
+    time_to_empty:
+      name: "Battery Time to Empty"
+    time_to_full:
+      name: "Battery Time to Full"
+    cycle_count:
+      name: "Battery Cycle Count"
+    state_of_health:
+      name: "Battery Health"
+    chem_id:
+      name: "Gauge Chemistry ID"
+
+    discharging:
+      name: "Battery Discharging"
+    fully_charged:
+      name: "Battery Fully Charged"
+    charge_inhibited:
+      name: "Charge Inhibited"
+    low_charge:
+      name: "Battery Low Charge"
+    critical_charge:
+      name: "Battery Critical Charge"
+    battery_high:
+      name: "Battery Voltage High"
+    battery_low:
+      name: "Battery Voltage Low"
+    over_temperature:
+      name: "Battery Over Temperature"
+
+    status:
+      name: "Gauge Status"
+
+    cc_offset_calibration:
+      name: "Calibrate CC Offset"
+    board_offset_calibration:
+      name: "Calibrate Board Offset"
+    enable_impedance_track:
+      name: "Enable Impedance Track"
+    reset_gauge:
+      name: "Reset Gauge"

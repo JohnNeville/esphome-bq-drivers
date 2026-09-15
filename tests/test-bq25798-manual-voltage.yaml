@@ -1,0 +1,29 @@
+# The charge-voltage number entity is mutually exclusive with `chemistry`, so
+# it cannot appear in the main test. This config exists to keep that class in
+# the compile coverage. Declaring the chemistry is the recommended route.
+esphome:
+  name: test-bq25798-mv
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+logger:
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [bq25798]
+
+i2c:
+  sda: GPIO2
+  scl: GPIO1
+  id: bus_internal
+
+bq25798:
+  i2c_id: bus_internal
+  update_interval: 60s
+  charge_voltage:
+    name: "Charge Voltage Limit"

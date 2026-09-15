@@ -1,0 +1,50 @@
+# Validates and compiles both components on every change.
+#
+# `esphome config` catches schema and codegen errors; `esphome compile` is the
+# one that actually matters, because it walks every C++ path the schema can
+# generate. The test YAMLs deliberately set every option for that reason.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: esphome config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install esphome
+      - run: esphome config tests/test-bq25798.yaml
+      - run: esphome config tests/test-bq34z100.yaml
+
+  compile:
+    name: esphome compile
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - tests/test-bq25798.yaml
+          - tests/test-bq34z100.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache the ESP-IDF toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/esphome
+          key: esphome-toolchain-${{ runner.os }}
+      - run: pip install esphome
+      - run: esphome compile ${{ matrix.config }}
