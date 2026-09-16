@@ -124,10 +124,19 @@ template<typename T> class BQ34Z100Child : public T, public Component {
   BQ34Z100Component *parent_{nullptr};
 };
 
+// One entry per data flash subclass the datasheet's Table 7-8 documents, with
+// the number of 32-byte blocks needed to cover its highest offset. Used by the
+// data flash dump.
+struct DataFlashSubclass {
+  uint8_t subclass;
+  uint8_t blocks;
+};
+
 class BQ34Z100CcOffsetButton;
 class BQ34Z100BoardOffsetButton;
 class BQ34Z100ItEnableButton;
 class BQ34Z100ResetButton;
+class BQ34Z100DumpButton;
 
 class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
  public:
@@ -167,6 +176,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_board_offset_button(BQ34Z100BoardOffsetButton *b) { board_offset_button_ = b; }
   void set_it_enable_button(BQ34Z100ItEnableButton *b) { it_enable_button_ = b; }
   void set_reset_button(BQ34Z100ResetButton *b) { reset_button_ = b; }
+  void set_dump_button(BQ34Z100DumpButton *b) { dump_button_ = b; }
 
   // --- Data flash configuration ---
   // Nothing below is written unless apply_configuration is true. Data flash
@@ -194,6 +204,10 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool run_board_offset_calibration();
   bool enable_impedance_track();
   bool reset_gauge();
+  // Reads every documented data flash subclass and logs it as hex. Intended
+  // for capturing a golden image from a gauge that has been programmed with
+  // bqStudio, so the same values can be replayed to other boards over I2C.
+  bool dump_data_flash();
 
  protected:
   bool read_word_(uint8_t cmd, uint16_t &value);
@@ -252,6 +266,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   BQ34Z100BoardOffsetButton *board_offset_button_{nullptr};
   BQ34Z100ItEnableButton *it_enable_button_{nullptr};
   BQ34Z100ResetButton *reset_button_{nullptr};
+  BQ34Z100DumpButton *dump_button_{nullptr};
 
   bool apply_configuration_flag_{false};
   uint16_t unseal_key0_{0x0414};
@@ -285,6 +300,11 @@ class BQ34Z100ItEnableButton : public BQ34Z100Child<button::Button> {
 class BQ34Z100ResetButton : public BQ34Z100Child<button::Button> {
  public:
   void press_action() override { this->parent_->reset_gauge(); }
+};
+
+class BQ34Z100DumpButton : public BQ34Z100Child<button::Button> {
+ public:
+  void press_action() override { this->parent_->dump_data_flash(); }
 };
 
 }  // namespace bq34z100

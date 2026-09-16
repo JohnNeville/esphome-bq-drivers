@@ -162,7 +162,17 @@ format, so the driver verifies every `F4` write by reading it back and decoding 
 Check: `CC Gain` for a 10.124 mΩ shunt is `0.470960`, which encodes to `7f 71 21 ae` and
 decodes back to `0.470960` — matching the datasheet's stated default of `0.47095`.
 
-## What cannot be done over I2C
+## Selecting a chemistry
 
-Loading a chemistry table. `CHEM_ID` reports the active chemistry but there is no
-documented command to change it; that needs bqStudio with an EV2400 and a `.bqz` file.
+`CHEM_ID` (`0x0008`) reports the active chemistry and cannot change it. The only selection
+path TI documents is the BQChem feature in bqStudio (§8.1.2.1.6), and the chemistry tables
+are not published in the datasheet.
+
+The data itself is ordinary data flash, so it is writable over I2C by the block-transfer
+protocol above — §7.2.3.1 lists "the BQ34Z100 evaluation software **or** data flash block
+transfers" as the two routes, and describes the captured values as a Golden Image File that
+"can then be written to multiple battery packs". bqStudio is therefore needed to *obtain*
+the values, not to write them.
+
+Default `Device Chemistry` (subclass 48, offset 55) is `LION`. LiFePO4 profiles are in the
+400 series.

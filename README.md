@@ -136,12 +136,39 @@ are stored in TI's proprietary 4-byte float format rather than IEEE 754. The com
 decodes what the gauge actually holds after writing and logs it, so a conversion problem
 shows up in the log rather than as a quietly wrong current reading.
 
-### What this cannot do
+### Selecting the battery chemistry
 
-**It cannot program the battery chemistry.** `CHEM_ID` (Control subcommand `0x0008`) only
-*reports* the chemistry ID. TI provides no documented I2C path to load a chemistry table —
-that takes bqStudio and an EV2400 with a `.bqz` chemistry file, once, at the bench. A gauge
-running the wrong chemistry reports a wrong state of charge no matter what else is set.
+**There is no I2C command that sets the chemistry.** `CHEM_ID` (Control subcommand `0x0008`)
+only *reports* the active chemistry ID, and the one selection path TI documents is the
+BQChem feature in bqStudio (datasheet §8.1.2.1.6). A gauge running the wrong chemistry
+reports a wrong state of charge no matter what else is set.
+
+That does not make it unreachable from I2C. The chemistry is ordinary data flash, and
+§7.2.3.1 says data flash is accessible "by use of the BQ34Z100 evaluation software **or by
+data flash block transfers**" — the same protocol this component already uses for capacity
+and calibration. The datasheet describes capturing the result as a Golden Image File that
+"can then be written to multiple battery packs".
+
+So bqStudio is needed **once, to obtain the table contents** — which the datasheet does not
+publish — rather than once per board. With the bytes in hand, writing them over I2C is the
+flash-stream path this component implements. Programming a chemistry from a declared ID is
+not implemented here, because the tables are not public.
+
+### Capturing a golden image
+
+`dump_data_flash` adds a button that unseals the gauge, reads every data flash subclass
+documented in Table 7-8, and logs each 32-byte block as
+
+```
+DF,<subclass>,<block>,<64 hex characters>
+```
+
+Press it on a gauge that bqStudio has already programmed and the log holds a complete
+record of that gauge's configuration — chemistry included. That is the practical route to
+programming a second board without bqStudio: capture once, replay the blocks over I2C.
+
+It is also a field diagnostic. Comparing a dump against a known-good one catches a gauge
+whose data flash has drifted, which `chem_id` alone will not show.
 
 Set `expected_chem_id` and the component will read the gauge's ID at boot and log an error
 if it does not match, so at least the problem is visible. LiFePO4 chemistries are in the
