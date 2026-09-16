@@ -79,6 +79,7 @@ CONF_CC_OFFSET_CALIBRATION = "cc_offset_calibration"
 CONF_BOARD_OFFSET_CALIBRATION = "board_offset_calibration"
 CONF_ENABLE_IMPEDANCE_TRACK = "enable_impedance_track"
 CONF_RESET_GAUGE = "reset_gauge"
+CONF_DUMP_DATA_FLASH = "dump_data_flash"
 
 BQ34Z100Component = bq34z100_ns.class_(
     "BQ34Z100Component", cg.PollingComponent, i2c.I2CDevice
@@ -87,6 +88,7 @@ BQ34Z100CcOffsetButton = bq34z100_ns.class_("BQ34Z100CcOffsetButton", button.But
 BQ34Z100BoardOffsetButton = bq34z100_ns.class_("BQ34Z100BoardOffsetButton", button.Button, cg.Component)
 BQ34Z100ItEnableButton = bq34z100_ns.class_("BQ34Z100ItEnableButton", button.Button, cg.Component)
 BQ34Z100ResetButton = bq34z100_ns.class_("BQ34Z100ResetButton", button.Button, cg.Component)
+BQ34Z100DumpButton = bq34z100_ns.class_("BQ34Z100DumpButton", button.Button, cg.Component)
 
 
 def _capacity_sensor():
@@ -160,8 +162,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_VOLTAGE_DIVIDER): cv.int_range(min=0, max=65535),
             cv.Optional(CONF_EXTERNAL_THERMISTOR, default=True): cv.boolean,
             cv.Optional(CONF_LIFEPO4_RELAX): cv.boolean,
-            # Advisory only: the chemistry table itself cannot be loaded over
-            # I2C, so a mismatch is reported rather than corrected.
+            # Advisory only. There is no I2C command that sets the chemistry,
+            # so a mismatch is reported rather than corrected.
             cv.Optional(CONF_EXPECTED_CHEM_ID): cv.hex_uint16_t,
             # --- Sensors ---
             cv.Optional(CONF_STATE_OF_CHARGE): _percent_sensor(DEVICE_CLASS_BATTERY),
@@ -264,6 +266,13 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:restart-alert",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            # Logs every documented data flash subclass as hex. Used to
+            # capture a golden image from a gauge programmed with bqStudio.
+            cv.Optional(CONF_DUMP_DATA_FLASH): button.button_schema(
+                BQ34Z100DumpButton,
+                icon="mdi:content-save-outline",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
         }
     )
     .extend(cv.polling_component_schema("60s"))
@@ -304,6 +313,7 @@ BUTTON_SETTERS = {
     CONF_BOARD_OFFSET_CALIBRATION: "set_board_offset_button",
     CONF_ENABLE_IMPEDANCE_TRACK: "set_it_enable_button",
     CONF_RESET_GAUGE: "set_reset_button",
+    CONF_DUMP_DATA_FLASH: "set_dump_button",
 }
 
 

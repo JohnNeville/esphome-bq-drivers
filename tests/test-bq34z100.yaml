@@ -97,3 +97,5 @@ sensor:
       name: "Enable Impedance Track"
     reset_gauge:
       name: "Reset Gauge"
+    dump_data_flash:
+      name: "Dump Gauge Data Flash"

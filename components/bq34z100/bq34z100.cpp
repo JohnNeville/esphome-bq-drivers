@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "esphome/core/helpers.h"
+
 namespace esphome {
 namespace bq34z100 {
 
@@ -307,6 +309,75 @@ bool BQ34Z100Component::apply_sense_resistor_() {
     }
   }
   return ok;
+}
+
+// ---------------------------------------------------------------------------
+// Data flash dump
+// ---------------------------------------------------------------------------
+
+// Every subclass documented in Table 7-8, with enough 32-byte blocks to cover
+// the highest offset listed for it. Subclasses outside this list are either
+// undocumented or unused on this part.
+static const DataFlashSubclass DATA_FLASH_MAP[] = {
+    {2, 1},    // Safety
+    {32, 1},   // Charge Inhibit Cfg
+    {34, 1},   // Charge
+    {36, 1},   // Charge Termination
+    {48, 2},   // Data - highest documented offset is 55
+    {49, 1},   // Discharge
+    {56, 1},   // Manufacturer Data
+    {58, 1},   // Lifetime Data
+    {59, 1},   // Lifetime Temp Samples
+    {60, 1},   // Integrity Data
+    {64, 1},   // Registers
+    {66, 1},   // Lifetime Resolution
+    {67, 1},   // Lifetime Res 2
+    {68, 1},   // Power
+    {80, 3},   // IT Cfg - highest documented offset is 91
+    {81, 1},   // Current Thresholds
+    {82, 1},   // State
+    {88, 1},   // Chem Data
+    {89, 1},   // R_a0x Calibration
+    {104, 1},  // Calibration
+    {107, 1},  // Current
+};
+
+bool BQ34Z100Component::dump_data_flash() {
+  if (!this->unseal_()) {
+    ESP_LOGE(TAG, "Could not unseal the gauge; data flash cannot be read");
+    return false;
+  }
+
+  ESP_LOGI(TAG, "---- BQ34Z100 data flash dump begins ----");
+  ESP_LOGI(TAG, "Format: DF,<subclass>,<block>,<32 bytes as hex>");
+
+  uint16_t chem_id = 0;
+  if (this->control_read_(CTRL_CHEM_ID, chem_id))
+    ESP_LOGI(TAG, "Chemistry ID: 0x%04X (%u)", chem_id, chem_id);
+
+  uint8_t buffer[FLASH_BLOCK_SIZE];
+  size_t ok = 0, failed = 0;
+  for (const auto &entry : DATA_FLASH_MAP) {
+    for (uint8_t block = 0; block < entry.blocks; block++) {
+      if (this->read_flash_block_(entry.subclass, block, buffer)) {
+        ESP_LOGI(TAG, "DF,%u,%u,%s", entry.subclass, block,
+                 format_hex(buffer, FLASH_BLOCK_SIZE).c_str());
+        ok++;
+      } else {
+        ESP_LOGW(TAG, "DF,%u,%u,READ FAILED", entry.subclass, block);
+        failed++;
+      }
+      // The gauge needs a moment between block transfers, and this keeps the
+      // dump from starving the rest of the loop.
+      delay(FLASH_SETUP_DELAY_MS);
+    }
+  }
+
+  ESP_LOGI(TAG, "---- data flash dump ends: %u blocks read, %u failed ----", static_cast<unsigned>(ok),
+           static_cast<unsigned>(failed));
+
+  this->seal_();
+  return failed == 0;
 }
 
 // ---------------------------------------------------------------------------

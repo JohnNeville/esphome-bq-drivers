@@ -154,6 +154,22 @@ publish — rather than once per board. With the bytes in hand, writing them ove
 flash-stream path this component implements. Programming a chemistry from a declared ID is
 not implemented here, because the tables are not public.
 
+### Capturing a golden image
+
+`dump_data_flash` adds a button that unseals the gauge, reads every data flash subclass
+documented in Table 7-8, and logs each 32-byte block as
+
+```
+DF,<subclass>,<block>,<64 hex characters>
+```
+
+Press it on a gauge that bqStudio has already programmed and the log holds a complete
+record of that gauge's configuration — chemistry included. That is the practical route to
+programming a second board without bqStudio: capture once, replay the blocks over I2C.
+
+It is also a field diagnostic. Comparing a dump against a known-good one catches a gauge
+whose data flash has drifted, which `chem_id` alone will not show.
+
 Set `expected_chem_id` and the component will read the gauge's ID at boot and log an error
 if it does not match, so at least the problem is visible. LiFePO4 chemistries are in the
 400 series; `lifepo4_relax` sets the `LFPRelax` and `DoDWT` bits in Pack Configuration B,
