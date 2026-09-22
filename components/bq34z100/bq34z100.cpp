@@ -424,6 +424,24 @@ bool BQ34Z100Component::reset_gauge() {
   return ok;
 }
 
+bool BQ34Z100Component::clear_alert() {
+  // Reading Flags() (command 0x0E/0x0F) acknowledges and clears the ALERT
+  // pin on the BQ34Z100, releasing the active-low open-drain line high to
+  // prevent quiescent leakage through its pull-up resistor.
+  uint16_t flags;
+  if (!this->read_word_(CMD_FLAGS, flags)) {
+    ESP_LOGW(TAG, "Failed to read Flags register to clear ALERT");
+    return false;
+  }
+  ESP_LOGD(TAG, "Cleared fuel gauge alert (Flags: 0x%04X)", flags);
+  return true;
+}
+
+void BQ34Z100Component::on_shutdown() {
+  ESP_LOGI(TAG, "Shutting down; clearing pending alert on /ALERT");
+  this->clear_alert();
+}
+
 // ---------------------------------------------------------------------------
 // Setup and polling
 // ---------------------------------------------------------------------------

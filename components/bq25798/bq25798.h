@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/automation.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -46,6 +47,12 @@ static const uint8_t REG1E_STATUS3 = 0x1E;
 static const uint8_t REG1F_STATUS4 = 0x1F;
 static const uint8_t REG20_FAULT0 = 0x20;
 static const uint8_t REG21_FAULT1 = 0x21;
+static const uint8_t REG22_FLAG0 = 0x22;
+static const uint8_t REG23_FLAG1 = 0x23;
+static const uint8_t REG24_FLAG2 = 0x24;
+static const uint8_t REG25_FLAG3 = 0x25;
+static const uint8_t REG26_FAULT_FLAG0 = 0x26;
+static const uint8_t REG27_FAULT_FLAG1 = 0x27;
 static const uint8_t REG2E_ADC_CTRL = 0x2E;
 static const uint8_t REG2F_ADC_DIS0 = 0x2F;
 static const uint8_t REG30_ADC_DIS1 = 0x30;
@@ -125,6 +132,7 @@ class BQ25798ShipModeButton;
 class BQ25798ShutdownButton;
 class BQ25798PowerCycleButton;
 class BQ25798ResetButton;
+class BQ25798ClearInterruptsButton;
 class BQ25798VocRatioSelect;
 class BQ25798VocDelaySelect;
 class BQ25798VocRateSelect;
@@ -133,6 +141,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
  public:
   void setup() override;
   void update() override;
+  void on_shutdown() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
@@ -207,6 +216,14 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // the charger reverts ICHG and friends to their PROG-pin defaults.
   void set_watchdog(uint8_t encoding) { watchdog_ = encoding; }
 
+  // TS_IGNORE, REG18[0]. The charger normally suspends charging (and OTG)
+  // whenever the TS pin sits outside the JEITA window, and an unpopulated
+  // thermistor reads as "far too cold", so a board with nothing on TS will
+  // not charge at all. Setting this tells the charger to treat TS as always
+  // good. It gives up temperature qualification entirely, so it is only
+  // honest on a board that genuinely has no thermistor.
+  void set_ts_ignore(bool ignore) { ts_ignore_ = ignore; }
+
   // TS divider description, needed to turn the TS ADC ratio into a
   // temperature. The upper resistor runs from REGN to TS and the lower one
   // from TS to ground, in parallel with the NTC.
@@ -234,6 +251,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool set_voc_rate(size_t index);
   bool ship_fet_action(ShipFetAction action);
   bool reset_registers();
+  bool clear_interrupts();
 
  protected:
   bool read_u8_(uint8_t reg, uint8_t &value);
@@ -296,6 +314,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   float ts_lower_ohms_{0.0f};
   float ts_nominal_ohms_{10000.0f};
   float ts_beta_{3435.0f};
+  bool ts_ignore_{false};
 
   uint16_t battery_capacity_{0};
   uint16_t max_charge_current_{ICHG_MAX_MA};
@@ -433,6 +452,22 @@ class BQ25798PowerCycleButton : public BQ25798Child<button::Button> {
 class BQ25798ResetButton : public BQ25798Child<button::Button> {
  public:
   void press_action() override { this->parent_->reset_registers(); }
+};
+
+class BQ25798ClearInterruptsButton : public BQ25798Child<button::Button> {
+ public:
+  void press_action() override { this->parent_->clear_interrupts(); }
+};
+
+// --- Actions ---------------------------------------------------------------
+
+template<typename... Ts> class ClearInterruptsAction : public Action<Ts...> {
+ public:
+  ClearInterruptsAction(BQ25798Component *parent) : parent_(parent) {}
+  void play(Ts... x) override { this->parent_->clear_interrupts(); }
+
+ protected:
+  BQ25798Component *parent_;
 };
 
 // --- Selects (MPPT tuning, REG15) ------------------------------------------

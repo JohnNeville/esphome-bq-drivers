@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import automation
 from esphome.components import (
     binary_sensor,
     button,
@@ -54,6 +55,7 @@ CONF_TS_RESISTOR_UPPER = "ts_resistor_upper"
 CONF_TS_RESISTOR_LOWER = "ts_resistor_lower"
 CONF_TS_NOMINAL_RESISTANCE = "ts_nominal_resistance"
 CONF_TS_BETA = "ts_beta"
+CONF_TS_IGNORE = "ts_ignore"
 
 # Sensors
 CONF_VBUS_VOLTAGE = "vbus_voltage"
@@ -101,6 +103,7 @@ CONF_SHIP_MODE = "ship_mode"
 CONF_SHUTDOWN = "shutdown"
 CONF_POWER_CYCLE = "power_cycle"
 CONF_RESET_REGISTERS = "reset_registers"
+CONF_CLEAR_INTERRUPTS = "clear_interrupts"
 
 # Selects
 CONF_MPPT_VOC_RATIO = "mppt_voc_ratio"
@@ -169,6 +172,8 @@ BQ25798ShipModeButton = bq25798_ns.class_("BQ25798ShipModeButton", button.Button
 BQ25798ShutdownButton = bq25798_ns.class_("BQ25798ShutdownButton", button.Button, cg.Component)
 BQ25798PowerCycleButton = bq25798_ns.class_("BQ25798PowerCycleButton", button.Button, cg.Component)
 BQ25798ResetButton = bq25798_ns.class_("BQ25798ResetButton", button.Button, cg.Component)
+BQ25798ClearInterruptsButton = bq25798_ns.class_("BQ25798ClearInterruptsButton", button.Button, cg.Component)
+ClearInterruptsAction = bq25798_ns.class_("ClearInterruptsAction", automation.Action)
 
 BQ25798VocRatioSelect = bq25798_ns.class_("BQ25798VocRatioSelect", select.Select, cg.Component)
 BQ25798VocDelaySelect = bq25798_ns.class_("BQ25798VocDelaySelect", select.Select, cg.Component)
@@ -272,7 +277,9 @@ def _validate_ship_fet(config):
 
 def _validate_ts_network(config):
     """The battery temperature is derived from the TS divider, so the divider
-    has to be described before the sensor can mean anything."""
+    has to be described before the sensor can mean anything. TS_IGNORE is
+    independent of that: it stops the charger acting on the reading, not the
+    ADC from producing one."""
     if CONF_BATTERY_TEMPERATURE in config:
         missing = [
             key
@@ -325,6 +332,10 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_TS_RESISTOR_LOWER): cv.resistance,
             cv.Optional(CONF_TS_NOMINAL_RESISTANCE, default="10kOhm"): cv.resistance,
             cv.Optional(CONF_TS_BETA, default=3435.0): cv.float_,
+            # TS_IGNORE. Charges regardless of what the TS pin reads, which is
+            # the only way a board with no thermistor fitted will charge at
+            # all -- at the cost of giving up temperature qualification.
+            cv.Optional(CONF_TS_IGNORE, default=False): cv.boolean,
             # --- Sensors ---
             cv.Optional(CONF_VBUS_VOLTAGE): _voltage_sensor(),
             cv.Optional(CONF_VAC1_VOLTAGE): _voltage_sensor(),
@@ -444,6 +455,11 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:backup-restore",
                 entity_category=ENTITY_CATEGORY_CONFIG,
             ),
+            cv.Optional(CONF_CLEAR_INTERRUPTS): button.button_schema(
+                BQ25798ClearInterruptsButton,
+                icon="mdi:bell-cancel",
+                entity_category=ENTITY_CATEGORY_CONFIG,
+            ),
             # --- Selects (MPPT tuning) ---
             cv.Optional(CONF_MPPT_VOC_RATIO): select.select_schema(
                 BQ25798VocRatioSelect,
@@ -515,7 +531,13 @@ NUMBER_SETTERS = {
     CONF_MIN_SYSTEM_VOLTAGE: "set_min_sys_voltage_number",
 }
 
-BUTTON_KEYS = [CONF_SHIP_MODE, CONF_SHUTDOWN, CONF_POWER_CYCLE, CONF_RESET_REGISTERS]
+BUTTON_KEYS = [
+    CONF_SHIP_MODE,
+    CONF_SHUTDOWN,
+    CONF_POWER_CYCLE,
+    CONF_RESET_REGISTERS,
+    CONF_CLEAR_INTERRUPTS,
+]
 
 SELECT_SETTERS = {
     CONF_MPPT_VOC_RATIO: ("set_voc_ratio_select", VOC_RATIO_OPTIONS),
@@ -543,6 +565,7 @@ async def to_code(config):
     if CONF_DEFAULT_CHARGE_CURRENT in config:
         cg.add(var.set_default_charge_current(config[CONF_DEFAULT_CHARGE_CURRENT]))
     cg.add(var.set_watchdog(WATCHDOG_OPTIONS[config[CONF_WATCHDOG]]))
+    cg.add(var.set_ts_ignore(config[CONF_TS_IGNORE]))
 
     if CONF_TS_RESISTOR_UPPER in config:
         cg.add(
@@ -601,3 +624,17 @@ async def to_code(config):
             await cg.register_component(sel, config[key])
             cg.add(sel.set_parent(var))
             cg.add(getattr(var, setter)(sel))
+
+
+@automation.register_action(
+    "bq25798.clear_interrupts",
+    ClearInterruptsAction,
+    cv.Schema(
+        {
+            cv.Required(CONF_ID): cv.use_id(BQ25798Component),
+        }
+    ),
+)
+async def bq25798_clear_interrupts_to_code(config, action_id, template_arg, args):
+    paren = await cg.get_variable(config[CONF_ID])
+    return cg.new_Pvariable(action_id, template_arg, paren)

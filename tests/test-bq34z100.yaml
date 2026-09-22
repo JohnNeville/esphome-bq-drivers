@@ -99,3 +99,5 @@ sensor:
       name: "Reset Gauge"
     dump_data_flash:
       name: "Dump Gauge Data Flash"
+    clear_alert:
+      name: "Clear Gauge Alert"

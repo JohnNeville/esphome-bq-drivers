@@ -28,7 +28,8 @@ I2C address is fixed at `0x6B`. There is no address strap.
 | `0x14` | Charger Control 5 | 8 | `SFET_PRESENT[7]`, `EN_IBAT[5]`, `IBAT_REG[4:3]`, `EN_IINDPM[2]`, `EN_EXTILIM[1]`, `EN_BATOC[0]` |
 | `0x15` | MPPT Control | 8 | `VOC_PCT[7:5]`, `VOC_DLY[4:3]`, `VOC_RATE[2:1]`, `EN_MPPT[0]` |
 | `0x16` | Temperature Control | 8 | `TREG[7:6]`, `TSHUT[5:4]`, pull-down enables, `BKUP_ACFET1_ON[0]` |
-| `0x17`–`0x18` | NTC Control 0/1 | 8 | JEITA thresholds |
+| `0x17` | NTC Control 0 | 8 | `JEITA_VSET[7:5]`, `JEITA_ISETH[4:3]`, `JEITA_ISETC[2:1]` |
+| `0x18` | NTC Control 1 | 8 | `TS_COOL[7:6]`, `TS_WARM[5:4]`, `BHOT[3:2]`, `BCOLD[1]`, `TS_IGNORE[0]` |
 | `0x19` | ICO Current Limit | 16 | Result of input current optimisation |
 | `0x1B`–`0x1F` | Charger Status 0–4 | 8 | See below |
 | `0x20`–`0x21` | FAULT Status 0/1 | 8 | See below |

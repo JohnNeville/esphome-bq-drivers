@@ -37,6 +37,7 @@ bq25798:
   ts_resistor_lower: 30.1kOhm
   ts_nominal_resistance: 10kOhm
   ts_beta: 3435
+  ts_ignore: false
 
   vbus_voltage:
     name: "Bus Voltage"
@@ -113,6 +114,8 @@ bq25798:
     name: "Power Cycle"
   reset_registers:
     name: "Reset Charger Registers"
+  clear_interrupts:
+    name: "Clear Charger Interrupts"
 
   mppt_voc_ratio:
     name: "MPPT VOC Ratio"

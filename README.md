@@ -96,6 +96,24 @@ each poll rather than assuming it stuck.
 `ts_nominal_resistance` / `ts_beta` if your NTC is not a 10 kΩ 3435 part) for
 `battery_temperature` to mean anything.
 
+**No thermistor fitted means no charging, unless you say `ts_ignore: true`.** The charger
+qualifies charging against the `TS` pin, and an unpopulated NTC leaves the divider sitting
+well above every JEITA cold threshold — the charger reads "far too cold" and suspends
+charging. `ts_ignore: true` sets `TS_IGNORE` (`REG18[0]`), which tells the charger to treat
+`TS` as always good:
+
+```yaml
+bq25798:
+  ts_ignore: true            # charge without temperature qualification
+```
+
+This gives up temperature protection entirely, so it is only honest on a board that
+genuinely has no thermistor. The bit is cleared by a register reset and by a watchdog
+expiry; the component rewrites it in both cases. It is independent of the divider options
+above — those only convert the `TS` reading into a temperature, and with `ts_ignore` on and
+no NTC fitted the `battery_temperature` sensor will read implausibly cold, because it is
+solving for a thermistor that is not there.
+
 ## `bq34z100`
 
 A `sensor` platform, because that is where the bulk of its entities live.

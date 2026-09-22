@@ -114,6 +114,17 @@ void BQ25798Component::configure_defaults_() {
     ESP_LOGW(TAG, "battery_ocp needs a ship FET to act on; EN_BATOC stays locked at 0");
   }
 
+  // TS_IGNORE. The charger qualifies charging against the TS pin, and an
+  // open TS divider reads far colder than any JEITA threshold, so a board
+  // with no thermistor fitted never charges. Writing this is the supported
+  // way out of that, at the cost of all temperature protection. The bit is
+  // cleared by a register reset and by a watchdog expiry, both of which land
+  // back here, so it is written on every pass rather than only at boot.
+  this->modify_u8_(REG18_NTC_CTRL1, 0x01, this->ts_ignore_ ? 0x01 : 0x00);
+  if (this->ts_ignore_) {
+    ESP_LOGW(TAG, "TS_IGNORE is set: charging is no longer qualified against the battery temperature");
+  }
+
   // The charger powers up at the PROG pin's defaults, which for a 1s pack
   // means 4.2 V. A LiFePO4 pack needs its own limit applied before any
   // charging happens, so the chemistry-derived value is written here rather
@@ -285,6 +296,25 @@ bool BQ25798Component::reset_registers() {
   this->configure_adc_();
   this->publish_control_states_();
   return true;
+}
+
+bool BQ25798Component::clear_interrupts() {
+  // Reading registers 0x22 to 0x27 (Charger Flag 0-3 and FAULT Flag 0-1) clears
+  // all latched interrupt flags and releases the active-low open-drain /INT pin,
+  // preventing continuous current leakage through its pull-up resistor.
+  uint8_t flags[6];
+  if (!this->read_bytes(REG22_FLAG0, flags, sizeof(flags))) {
+    ESP_LOGW(TAG, "Failed to read flag registers to clear interrupts");
+    return false;
+  }
+  ESP_LOGD(TAG, "Cleared charger flags (0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X)",
+           flags[0], flags[1], flags[2], flags[3], flags[4], flags[5]);
+  return true;
+}
+
+void BQ25798Component::on_shutdown() {
+  ESP_LOGI(TAG, "Shutting down; clearing pending interrupts on /INT");
+  this->clear_interrupts();
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +573,7 @@ void BQ25798Component::dump_config() {
     ESP_LOGCONFIG(TAG, "    Battery OCP: %s", ONOFF(this->battery_ocp_));
   }
   ESP_LOGCONFIG(TAG, "  Watchdog: %s", this->watchdog_ == 0 ? "disabled" : "enabled");
+  ESP_LOGCONFIG(TAG, "  TS ignore: %s", ONOFF(this->ts_ignore_));
 }
 
 }  // namespace bq25798
