@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import automation
 from esphome.components import binary_sensor, button, i2c, sensor, text_sensor
 from esphome.const import (
     CONF_ID,
@@ -80,6 +81,7 @@ CONF_BOARD_OFFSET_CALIBRATION = "board_offset_calibration"
 CONF_ENABLE_IMPEDANCE_TRACK = "enable_impedance_track"
 CONF_RESET_GAUGE = "reset_gauge"
 CONF_DUMP_DATA_FLASH = "dump_data_flash"
+CONF_CLEAR_ALERT = "clear_alert"
 
 BQ34Z100Component = bq34z100_ns.class_(
     "BQ34Z100Component", cg.PollingComponent, i2c.I2CDevice
@@ -89,6 +91,8 @@ BQ34Z100BoardOffsetButton = bq34z100_ns.class_("BQ34Z100BoardOffsetButton", butt
 BQ34Z100ItEnableButton = bq34z100_ns.class_("BQ34Z100ItEnableButton", button.Button, cg.Component)
 BQ34Z100ResetButton = bq34z100_ns.class_("BQ34Z100ResetButton", button.Button, cg.Component)
 BQ34Z100DumpButton = bq34z100_ns.class_("BQ34Z100DumpButton", button.Button, cg.Component)
+BQ34Z100ClearAlertButton = bq34z100_ns.class_("BQ34Z100ClearAlertButton", button.Button, cg.Component)
+ClearAlertAction = bq34z100_ns.class_("ClearAlertAction", automation.Action)
 
 
 def _capacity_sensor():
@@ -273,6 +277,11 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:content-save-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            cv.Optional(CONF_CLEAR_ALERT): button.button_schema(
+                BQ34Z100ClearAlertButton,
+                icon="mdi:bell-cancel",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
         }
     )
     .extend(cv.polling_component_schema("60s"))
@@ -314,6 +323,7 @@ BUTTON_SETTERS = {
     CONF_ENABLE_IMPEDANCE_TRACK: "set_it_enable_button",
     CONF_RESET_GAUGE: "set_reset_button",
     CONF_DUMP_DATA_FLASH: "set_dump_button",
+    CONF_CLEAR_ALERT: "set_clear_alert_button",
 }
 
 
@@ -361,3 +371,17 @@ async def to_code(config):
             await cg.register_component(btn, config[key])
             cg.add(btn.set_parent(var))
             cg.add(getattr(var, setter)(btn))
+
+
+@automation.register_action(
+    "bq34z100.clear_alert",
+    ClearAlertAction,
+    cv.Schema(
+        {
+            cv.Required(CONF_ID): cv.use_id(BQ34Z100Component),
+        }
+    ),
+)
+async def bq34z100_clear_alert_to_code(config, action_id, template_arg, args):
+    paren = await cg.get_variable(config[CONF_ID])
+    return cg.new_Pvariable(action_id, template_arg, paren)

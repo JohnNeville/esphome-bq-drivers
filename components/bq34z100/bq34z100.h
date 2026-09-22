@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/automation.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -137,11 +138,13 @@ class BQ34Z100BoardOffsetButton;
 class BQ34Z100ItEnableButton;
 class BQ34Z100ResetButton;
 class BQ34Z100DumpButton;
+class BQ34Z100ClearAlertButton;
 
 class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
  public:
   void setup() override;
   void update() override;
+  void on_shutdown() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
@@ -177,6 +180,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_it_enable_button(BQ34Z100ItEnableButton *b) { it_enable_button_ = b; }
   void set_reset_button(BQ34Z100ResetButton *b) { reset_button_ = b; }
   void set_dump_button(BQ34Z100DumpButton *b) { dump_button_ = b; }
+  void set_clear_alert_button(BQ34Z100ClearAlertButton *b) { clear_alert_button_ = b; }
 
   // --- Data flash configuration ---
   // Nothing below is written unless apply_configuration is true. Data flash
@@ -204,6 +208,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool run_board_offset_calibration();
   bool enable_impedance_track();
   bool reset_gauge();
+  bool clear_alert();
   // Reads every documented data flash subclass and logs it as hex. Intended
   // for capturing a golden image from a gauge that has been programmed with
   // bqStudio, so the same values can be replayed to other boards over I2C.
@@ -267,6 +272,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   BQ34Z100ItEnableButton *it_enable_button_{nullptr};
   BQ34Z100ResetButton *reset_button_{nullptr};
   BQ34Z100DumpButton *dump_button_{nullptr};
+  BQ34Z100ClearAlertButton *clear_alert_button_{nullptr};
 
   bool apply_configuration_flag_{false};
   uint16_t unseal_key0_{0x0414};
@@ -305,6 +311,22 @@ class BQ34Z100ResetButton : public BQ34Z100Child<button::Button> {
 class BQ34Z100DumpButton : public BQ34Z100Child<button::Button> {
  public:
   void press_action() override { this->parent_->dump_data_flash(); }
+};
+
+class BQ34Z100ClearAlertButton : public BQ34Z100Child<button::Button> {
+ public:
+  void press_action() override { this->parent_->clear_alert(); }
+};
+
+// --- Actions ---------------------------------------------------------------
+
+template<typename... Ts> class ClearAlertAction : public Action<Ts...> {
+ public:
+  ClearAlertAction(BQ34Z100Component *parent) : parent_(parent) {}
+  void play(Ts... x) override { this->parent_->clear_alert(); }
+
+ protected:
+  BQ34Z100Component *parent_;
 };
 
 }  // namespace bq34z100
