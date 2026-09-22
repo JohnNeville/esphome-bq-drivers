@@ -381,6 +381,7 @@ async def to_code(config):
             cv.Required(CONF_ID): cv.use_id(BQ34Z100Component),
         }
     ),
+    synchronous=True,
 )
 async def bq34z100_clear_alert_to_code(config, action_id, template_arg, args):
     paren = await cg.get_variable(config[CONF_ID])
