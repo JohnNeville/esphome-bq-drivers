@@ -500,7 +500,11 @@ void BQ34Z100Component::update() {
   if (!this->setup_ok_)
     return;
 
-  this->publish_word_(this->state_of_charge_sensor_, CMD_STATE_OF_CHARGE, 1.0f, false);
+  // StateOfCharge is a single byte (0x02) with MaxError in the byte above it (0x03), so a word
+  // read has to be masked down to the low byte.
+  uint16_t raw;
+  if (this->state_of_charge_sensor_ != nullptr && this->read_word_(CMD_STATE_OF_CHARGE, raw))
+    this->state_of_charge_sensor_->publish_state(raw & 0xFF);
   this->publish_word_(this->voltage_sensor_, CMD_VOLTAGE, 0.001f, false);
   this->publish_word_(this->current_sensor_, CMD_CURRENT, 1.0f, true);
   this->publish_word_(this->average_current_sensor_, CMD_AVERAGE_CURRENT, 1.0f, true);
@@ -511,10 +515,11 @@ void BQ34Z100Component::update() {
   // AvailableEnergy is reported in units of 10 mWh.
   this->publish_word_(this->available_energy_sensor_, CMD_AVAILABLE_ENERGY, 0.01f, false);
   this->publish_word_(this->cycle_count_sensor_, CMD_CYCLE_COUNT, 1.0f, false);
-  this->publish_word_(this->state_of_health_sensor_, CMD_STATE_OF_HEALTH, 1.0f, false);
+  // StateOfHealth is likewise one byte (0x2E), with the SOH status byte above it (0x2F).
+  if (this->state_of_health_sensor_ != nullptr && this->read_word_(CMD_STATE_OF_HEALTH, raw))
+    this->state_of_health_sensor_->publish_state(raw & 0xFF);
 
   // Both temperature commands report in tenths of a kelvin.
-  uint16_t raw;
   if (this->temperature_sensor_ != nullptr && this->read_word_(CMD_TEMPERATURE, raw))
     this->temperature_sensor_->publish_state(raw / 10.0f - 273.15f);
   if (this->internal_temperature_sensor_ != nullptr && this->read_word_(CMD_INTERNAL_TEMP, raw))
