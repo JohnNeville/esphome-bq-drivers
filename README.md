@@ -114,6 +114,21 @@ above — those only convert the `TS` reading into a temperature, and with `ts_i
 no NTC fitted the `battery_temperature` sensor will read implausibly cold, because it is
 solving for a thermistor that is not there.
 
+**Turning off the charger's D+/D- detection.** On every VBUS plug-in the charger runs its own
+BC1.2 and non-standard-adapter detection on its `D+`/`D-` pins and uses the result to set the
+input current limit. If those pins are not connected, or share a native USB port that the
+detection signalling would disturb, switch it off with `auto_input_detection: false`, which
+clears `AUTO_INDET_EN` (`REG11[6]`):
+
+```yaml
+bq25798:
+  auto_input_detection: false   # default true, the chip's power-on state
+```
+
+This only affects plug-ins after the firmware starts; a detection that already ran at power-up
+is not undone. The bit is cleared by a register reset and by a watchdog expiry, and the
+component rewrites it in both cases.
+
 ## `bq34z100`
 
 A `sensor` platform, because that is where the bulk of its entities live.

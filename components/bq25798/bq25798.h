@@ -224,6 +224,15 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // honest on a board that genuinely has no thermistor.
   void set_ts_ignore(bool ignore) { ts_ignore_ = ignore; }
 
+  // AUTO_INDET_EN, REG11[6]. When set (the power-on default) the charger runs
+  // its D+/D- detection (BC1.2 and non-standard adapters) every time VBUS is
+  // plugged in and uses the result to set the input current limit. Clearing
+  // it stops that, which is what a board wants when D+/D- are not wired to
+  // the charger, or are shared with a native USB port that the detection
+  // signalling would disturb. It only affects later plug-ins: a detection
+  // that already ran before the firmware started is not undone.
+  void set_auto_input_detection(bool enable) { auto_input_detection_ = enable; }
+
   // TS divider description, needed to turn the TS ADC ratio into a
   // temperature. The upper resistor runs from REGN to TS and the lower one
   // from TS to ground, in parallel with the NTC.
@@ -315,6 +324,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   float ts_nominal_ohms_{10000.0f};
   float ts_beta_{3435.0f};
   bool ts_ignore_{false};
+  bool auto_input_detection_{true};
 
   uint16_t battery_capacity_{0};
   uint16_t max_charge_current_{ICHG_MAX_MA};
