@@ -590,12 +590,15 @@ void BQ34Z100Component::dump_config() {
   }
   LOG_UPDATE_INTERVAL(this);
   ESP_LOGCONFIG(TAG, "  Data flash configuration: %s", this->apply_configuration_flag_ ? "applied" : "left alone");
-  if (this->sense_resistor_ > 0.0f)
+  if (this->sense_resistor_ > 0.0f) {
     ESP_LOGCONFIG(TAG, "  Sense resistor: %.3f mOhm", this->sense_resistor_);
-  if (this->design_capacity_ >= 0)
+  }
+  if (this->design_capacity_ >= 0) {
     ESP_LOGCONFIG(TAG, "  Design capacity: %d mAh", this->design_capacity_);
-  if (this->expected_chem_id_ != 0)
+  }
+  if (this->expected_chem_id_ != 0) {
     ESP_LOGCONFIG(TAG, "  Expected chemistry ID: 0x%04X", this->expected_chem_id_);
+  }
 }
 
 }  // namespace bq34z100

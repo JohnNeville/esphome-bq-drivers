@@ -567,10 +567,12 @@ void BQ25798Component::dump_config() {
   }
   LOG_UPDATE_INTERVAL(this);
   ESP_LOGCONFIG(TAG, "  Max charge current: %u mA", this->max_charge_current_);
-  if (!std::isnan(this->charge_voltage_limit_))
+  if (!std::isnan(this->charge_voltage_limit_)) {
     ESP_LOGCONFIG(TAG, "  Charge voltage limit: %.2f V", this->charge_voltage_limit_);
-  if (this->battery_capacity_ > 0)
+  }
+  if (this->battery_capacity_ > 0) {
     ESP_LOGCONFIG(TAG, "  Battery capacity: %u mAh", this->battery_capacity_);
+  }
   ESP_LOGCONFIG(TAG, "  Ship FET populated: %s", YESNO(this->ship_fet_present_));
   if (this->ship_fet_present_) {
     ESP_LOGCONFIG(TAG, "    Action delay: %s", this->ship_fet_action_delay_ ? "10 s" : "none");
