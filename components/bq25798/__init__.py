@@ -56,6 +56,7 @@ CONF_TS_RESISTOR_LOWER = "ts_resistor_lower"
 CONF_TS_NOMINAL_RESISTANCE = "ts_nominal_resistance"
 CONF_TS_BETA = "ts_beta"
 CONF_TS_IGNORE = "ts_ignore"
+CONF_AUTO_INPUT_DETECTION = "auto_input_detection"
 
 # Sensors
 CONF_VBUS_VOLTAGE = "vbus_voltage"
@@ -336,6 +337,10 @@ CONFIG_SCHEMA = cv.All(
             # the only way a board with no thermistor fitted will charge at
             # all -- at the cost of giving up temperature qualification.
             cv.Optional(CONF_TS_IGNORE, default=False): cv.boolean,
+            # AUTO_INDET_EN. The charger's D+/D- input detection on VBUS
+            # plug-in; on by default in the chip. Turn it off when D+/D- are
+            # not wired to the charger or are shared with a native USB port.
+            cv.Optional(CONF_AUTO_INPUT_DETECTION, default=True): cv.boolean,
             # --- Sensors ---
             cv.Optional(CONF_VBUS_VOLTAGE): _voltage_sensor(),
             cv.Optional(CONF_VAC1_VOLTAGE): _voltage_sensor(),
@@ -566,6 +571,7 @@ async def to_code(config):
         cg.add(var.set_default_charge_current(config[CONF_DEFAULT_CHARGE_CURRENT]))
     cg.add(var.set_watchdog(WATCHDOG_OPTIONS[config[CONF_WATCHDOG]]))
     cg.add(var.set_ts_ignore(config[CONF_TS_IGNORE]))
+    cg.add(var.set_auto_input_detection(config[CONF_AUTO_INPUT_DETECTION]))
 
     if CONF_TS_RESISTOR_UPPER in config:
         cg.add(

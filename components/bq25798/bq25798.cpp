@@ -121,6 +121,10 @@ void BQ25798Component::configure_defaults_() {
   // cleared by a register reset and by a watchdog expiry, both of which land
   // back here, so it is written on every pass rather than only at boot.
   this->modify_u8_(REG18_NTC_CTRL1, 0x01, this->ts_ignore_ ? 0x01 : 0x00);
+
+  // AUTO_INDET_EN. Like TS_IGNORE it is cleared back to its default by a
+  // register reset or a watchdog expiry, so it is written on every pass.
+  this->modify_u8_(REG11_CHG_CTRL2, 0x40, this->auto_input_detection_ ? 0x40 : 0x00);
   if (this->ts_ignore_) {
     ESP_LOGW(TAG, "TS_IGNORE is set: charging is no longer qualified against the battery temperature");
   }
@@ -574,6 +578,7 @@ void BQ25798Component::dump_config() {
   }
   ESP_LOGCONFIG(TAG, "  Watchdog: %s", this->watchdog_ == 0 ? "disabled" : "enabled");
   ESP_LOGCONFIG(TAG, "  TS ignore: %s", ONOFF(this->ts_ignore_));
+  ESP_LOGCONFIG(TAG, "  Automatic D+/D- input detection: %s", ONOFF(this->auto_input_detection_));
 }
 
 }  // namespace bq25798
