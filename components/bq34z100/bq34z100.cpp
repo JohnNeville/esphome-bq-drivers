@@ -360,8 +360,9 @@ bool BQ34Z100Component::dump_data_flash() {
   for (const auto &entry : DATA_FLASH_MAP) {
     for (uint8_t block = 0; block < entry.blocks; block++) {
       if (this->read_flash_block_(entry.subclass, block, buffer)) {
-        ESP_LOGI(TAG, "DF,%u,%u,%s", entry.subclass, block,
-                 format_hex(buffer, FLASH_BLOCK_SIZE).c_str());
+        char hex[format_hex_size(FLASH_BLOCK_SIZE)];
+        format_hex_to(hex, buffer, FLASH_BLOCK_SIZE);
+        ESP_LOGI(TAG, "DF,%u,%u,%s", entry.subclass, block, hex);
         ok++;
       } else {
         ESP_LOGW(TAG, "DF,%u,%u,READ FAILED", entry.subclass, block);
