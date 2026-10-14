@@ -44,6 +44,25 @@ CONF_VOLTAGE_DIVIDER = "voltage_divider"
 CONF_EXTERNAL_THERMISTOR = "external_thermistor"
 CONF_LIFEPO4_RELAX = "lifepo4_relax"
 CONF_EXPECTED_CHEM_ID = "expected_chem_id"
+CONF_ALERT_CONFIGURATION = "alert_configuration"
+
+# Alert Configuration (data flash subclass 64, offset 5) uses the Flags() bit layout
+# (datasheet Table 7-19). Reserved bits are not offered.
+ALERT_FLAGS = {
+    "over_temperature_charge": 1 << 15,
+    "over_temperature_discharge": 1 << 14,
+    "battery_high": 1 << 13,
+    "battery_low": 1 << 12,
+    "charge_inhibited": 1 << 11,
+    "fully_charged": 1 << 9,
+    "charging_allowed": 1 << 8,
+    "ocv_taken": 1 << 7,
+    "internal_short": 1 << 6,
+    "tab_disconnect": 1 << 5,
+    "low_charge": 1 << 2,
+    "critical_charge": 1 << 1,
+    "discharging": 1 << 0,
+}
 
 # Sensors
 CONF_STATE_OF_CHARGE = "state_of_charge"
@@ -169,6 +188,9 @@ CONFIG_SCHEMA = cv.All(
             # Advisory only. There is no I2C command that sets the chemistry,
             # so a mismatch is reported rather than corrected.
             cv.Optional(CONF_EXPECTED_CHEM_ID): cv.hex_uint16_t,
+            # Which gauge flags pull the ALERT pin low. Written only with
+            # apply_configuration: true. An empty list writes 0 (no alerts).
+            cv.Optional(CONF_ALERT_CONFIGURATION): cv.ensure_list(cv.one_of(*ALERT_FLAGS, lower=True)),
             # --- Sensors ---
             cv.Optional(CONF_STATE_OF_CHARGE): _percent_sensor(DEVICE_CLASS_BATTERY),
             cv.Optional(CONF_VOLTAGE): sensor.sensor_schema(
@@ -350,6 +372,11 @@ async def to_code(config):
         cg.add(var.set_lifepo4_relax(config[CONF_LIFEPO4_RELAX]))
     if CONF_EXPECTED_CHEM_ID in config:
         cg.add(var.set_expected_chem_id(config[CONF_EXPECTED_CHEM_ID]))
+    if CONF_ALERT_CONFIGURATION in config:
+        mask = 0
+        for name in config[CONF_ALERT_CONFIGURATION]:
+            mask |= ALERT_FLAGS[name]
+        cg.add(var.set_alert_configuration(mask))
 
     for key, setter in SENSOR_SETTERS.items():
         if key in config:

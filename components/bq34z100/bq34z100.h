@@ -77,6 +77,7 @@ static const uint8_t OFFSET_DESIGN_ENERGY = 13;    // I2, mWh
 static const uint8_t SUBCLASS_REGISTERS = 64;
 static const uint8_t OFFSET_PACK_CONFIGURATION = 0;    // H2
 static const uint8_t OFFSET_PACK_CONFIGURATION_B = 2;  // H1
+static const uint8_t OFFSET_ALERT_CONFIGURATION = 5;   // H2
 static const uint8_t OFFSET_NUMBER_OF_SERIES_CELL = 7; // U1
 
 static const uint8_t SUBCLASS_CALIBRATION = 104;
@@ -198,6 +199,12 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_voltage_divider(uint16_t mv) { voltage_divider_ = mv; }
   void set_external_thermistor(bool external) { external_thermistor_ = external; }
   void set_lifepo4_relax(bool enable) { lifepo4_relax_ = enable; }
+  // Which Flags() bits pull the ALERT pin low. The gauge ships with 0, so ALERT never
+  // asserts until this is written. The bit layout is the same as Flags().
+  void set_alert_configuration(uint16_t mask) {
+    alert_configuration_ = mask;
+    alert_configuration_set_ = true;
+  }
   // Purely advisory: the chemistry table itself cannot be programmed over
   // I2C, so all this does is warn when the gauge is not running the
   // chemistry the configuration expects.
@@ -284,6 +291,8 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   uint16_t voltage_divider_{0};
   bool external_thermistor_{true};
   bool lifepo4_relax_{false};
+  uint16_t alert_configuration_{0};
+  bool alert_configuration_set_{false};
   uint16_t expected_chem_id_{0};
   bool setup_ok_{false};
 };

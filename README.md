@@ -164,6 +164,24 @@ you can declare the right values in a board package and flip the switch once whe
 attached; with it off, the component logs a warning at boot saying the values are declared
 but the flash is untouched.
 
+### Alert pin
+
+The gauge ships with its Alert Configuration register at 0, so the `ALERT` pin never goes
+low whatever the flags say. `alert_configuration` picks which `Flags()` bits are ORed onto the
+pin (datasheet Table 7-19). It is written with the rest of the data flash, so it needs
+`apply_configuration: true` too:
+
+```yaml
+    apply_configuration: true
+    alert_configuration: [low_charge, critical_charge]
+```
+
+The names are `over_temperature_charge`, `over_temperature_discharge`, `battery_high`,
+`battery_low`, `charge_inhibited`, `fully_charged`, `charging_allowed`, `ocv_taken`,
+`internal_short`, `tab_disconnect`, `low_charge`, `critical_charge` and `discharging`. An empty
+list writes 0 and turns every alert off. Reading `Flags()` is what `clear_alert` does, and the
+component polls it, so the pin may only stay low until the next poll.
+
 `sense_resistor` is converted to the `CC Gain` and `CC Delta` calibration constants, which
 are stored in TI's proprietary 4-byte float format rather than IEEE 754. The component
 decodes what the gauge actually holds after writing and logs it, so a conversion problem
