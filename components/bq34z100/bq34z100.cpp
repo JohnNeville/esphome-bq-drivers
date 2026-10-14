@@ -244,6 +244,12 @@ void BQ34Z100Component::apply_configuration_() {
   this->apply_pack_configuration_();
   this->apply_sense_resistor_();
 
+  if (this->alert_configuration_set_) {
+    uint8_t buf[2] = {static_cast<uint8_t>(this->alert_configuration_ >> 8),
+                      static_cast<uint8_t>(this->alert_configuration_ & 0xFF)};
+    this->update_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_ALERT_CONFIGURATION, buf, 2);
+  }
+
   this->seal_();
 }
 
@@ -475,7 +481,7 @@ void BQ34Z100Component::setup() {
   if (this->apply_configuration_flag_) {
     this->apply_configuration_();
   } else if (this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
-             this->voltage_divider_ > 0) {
+             this->voltage_divider_ > 0 || this->alert_configuration_set_) {
     // Values are declared but writing them is off. Say so rather than letting
     // someone assume a configured gauge is a calibrated one.
     ESP_LOGW(TAG,
@@ -599,6 +605,9 @@ void BQ34Z100Component::dump_config() {
   }
   if (this->expected_chem_id_ != 0) {
     ESP_LOGCONFIG(TAG, "  Expected chemistry ID: 0x%04X", this->expected_chem_id_);
+  }
+  if (this->alert_configuration_set_) {
+    ESP_LOGCONFIG(TAG, "  Alert configuration: 0x%04X", this->alert_configuration_);
   }
 }
 
