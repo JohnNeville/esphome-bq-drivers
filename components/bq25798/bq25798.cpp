@@ -187,11 +187,29 @@ bool BQ25798Component::enable_hiz(bool enable) {
 
 // Input selection. The charger's EN_ACDRV bits alone do not open an input that is already
 // placed; DIS_ACDRV (REG0x12 bit 7) forces both drivers off, and the datasheet's way to swap
-// inputs is: DIS_ACDRV = 1, set the EN_ACDRV bits, wait for VBUS to fall below the present
-// threshold, then DIS_ACDRV = 0. When the board is already running from a port that the new
-// choice keeps, only the EN bits are written, so the supply is not interrupted.
+// inputs is: DIS_ACDRV = 1, wait for VBUS to fall below the present threshold, DIS_ACDRV = 0.
+// DIS_ACDRV forces the EN_ACDRV bits to 0 while it is set, so they are written again after it
+// is cleared; with both inputs valid the charger does not turn either on by itself. When the
+// board is already running from a port that the new choice keeps, only the EN bits are written,
+// so the supply is not interrupted.
 static const size_t INPUT_AUTO = 0, INPUT_USB = 1, INPUT_SOLAR = 2, INPUT_OFF = 3;
 static const uint32_t INPUT_VBUS_WAIT_MS = 15000;
+
+// Enable bits to write for a mode. The charger ignores a write that sets both bits at once, so
+// Auto enables only the primary valid port (port 1, USB, first), which is what the charger itself
+// does when two inputs appear together. If neither port has a valid input yet, both stay clear and
+// the charger picks one when an input appears.
+static uint8_t input_enable_bits(size_t mode, uint8_t status0) {
+  if (mode == INPUT_USB)
+    return 0x40;
+  if (mode == INPUT_SOLAR)
+    return 0x80;
+  if ((status0 & 0x02) != 0)
+    return 0x40;
+  if ((status0 & 0x04) != 0)
+    return 0x80;
+  return 0x00;
+}
 
 bool BQ25798Component::set_input_selection(size_t index) {
   if (index > INPUT_OFF)
@@ -211,7 +229,7 @@ bool BQ25798Component::set_input_selection(size_t index) {
 
   const bool want1 = index == INPUT_AUTO || index == INPUT_USB;
   const bool want2 = index == INPUT_AUTO || index == INPUT_SOLAR;
-  const uint8_t en_bits = (want1 ? 0x40 : 0x00) | (want2 ? 0x80 : 0x00);
+  const uint8_t en_bits = input_enable_bits(index, status0);
   const bool drivers_disabled = (ctrl3 & 0x80) != 0;
   // A port may be feeding the board when it has voltage on its VAC pin, its enable bit is set and
   // VBUS is up. If both could be, assume either may be. (ACRB_STAT only says the FET pair exists.)
@@ -220,8 +238,12 @@ bool BQ25798Component::set_input_selection(size_t index) {
   const bool feeding2 = vbus_present && !drivers_disabled && (status0 & 0x04) != 0 && (ctrl4 & 0x80) != 0;
   const bool must_open = (feeding1 && !want1) || (feeding2 && !want2);
 
-  if (!must_open && !drivers_disabled)
+  if (!must_open && !drivers_disabled) {
+    // Auto leaves an input that is already working alone.
+    if (index == INPUT_AUTO && (feeding1 || feeding2))
+      return true;
     return this->modify_u8_(REG13_CHG_CTRL4, 0xC0, en_bits);
+  }
 
   if (!drivers_disabled && !this->modify_u8_(REG12_CHG_CTRL3, 0x80, 0x80))
     return false;
@@ -234,7 +256,7 @@ bool BQ25798Component::set_input_selection(size_t index) {
 }
 
 void BQ25798Component::input_selection_step_() {
-  uint8_t status0;
+  uint8_t status0 = 0;
   const bool vbus_present = this->read_u8_(REG1B_STATUS0, status0) && (status0 & 0x01) != 0;
   if (vbus_present && static_cast<int32_t>(millis() - this->input_deadline_) < 0) {
     this->set_timeout("input_selection", 250, [this]() { this->input_selection_step_(); });
@@ -243,6 +265,9 @@ void BQ25798Component::input_selection_step_() {
   if (vbus_present)
     ESP_LOGW(TAG, "VBUS still present after %u ms; turning the input drivers back on anyway", INPUT_VBUS_WAIT_MS);
   this->modify_u8_(REG12_CHG_CTRL3, 0x80, 0x00);
+  // Clearing DIS_ACDRV leaves both enable bits at 0, so say which port may turn on.
+  this->read_u8_(REG1B_STATUS0, status0);
+  this->modify_u8_(REG13_CHG_CTRL4, 0xC0, input_enable_bits(static_cast<size_t>(this->input_requested_), status0));
   this->input_busy_ = false;
   this->publish_control_states_();
 }
