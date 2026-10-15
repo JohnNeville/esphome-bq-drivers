@@ -79,6 +79,11 @@ bq25798:
     name: "Input Source"
   charger_fault:
     name: "Charger Fault"
+  active_input:
+    name: "Active Input"
+
+  input_selection:
+    name: "Input Selection"
 
   enable_charging:
     name: "Enable Charging"

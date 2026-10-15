@@ -129,6 +129,48 @@ This only affects plug-ins after the firmware starts; a detection that already r
 is not undone. The bit is cleared by a register reset and by a watchdog expiry, and the
 component rewrites it in both cases.
 
+### Choosing which input powers the board
+
+`input_selection` adds a drop-down that decides which of the two input ports may power the
+board, and `active_input` reports which one actually does:
+
+```yaml
+bq25798:
+  input_selection:
+    name: "Input Selection"
+  active_input:
+    name: "Active Input"
+```
+
+| Option | USB (`ACDRV1`) | Solar / DC (`ACDRV2`) |
+|---|---|---|
+| Auto | allowed | allowed |
+| Force USB | allowed | off |
+| Force Solar | off | allowed |
+| Off | both input drivers forced off | |
+
+- **Why not the per-port switches?** `EN_ACDRV1` and `EN_ACDRV2` only decide whether a driver may
+  turn on. Writing 0 does not open an input that is already placed. The datasheet's way to
+  open one is `DIS_ACDRV`, so a change that has to open a placed input sets `DIS_ACDRV`, writes
+  the enable bits, waits for `VBUS` to fall below the present threshold (15 s at most) and
+  clears `DIS_ACDRV` again. Choosing a mode that keeps the port the board is already running
+  from only writes the enable bits, so the supply is not interrupted.
+- **Off** is the same as setting `DIS_ACDRV` by hand: the board runs from the battery and does
+  not charge. With no battery fitted it browns out.
+- **Force USB and Force Solar are preferences, not locks.** The charger sets `EN_ACDRV1` itself when
+  a valid input appears at `VAC1`, and no register makes it reject one. With USB plugged in,
+  Force Solar cannot hold: the charger turns USB back on. The enable bits show what the charger
+  decided, not what you asked for (once an input is picked it clears the other port's bit, so Auto
+  and Force USB read the same). The drop-down therefore keeps showing your choice, and falls back to
+  Auto, with a warning in the log such as `Input selection was set to 'Force Solar' but the charger
+  overrode it; showing 'Auto'`, only when the charger's behaviour contradicts it. Nothing re-applies
+  your choice. Off is reliable, because `DIS_ACDRV` forces both drivers off.
+- `active_input` shows `USB`, `Solar` or `None`, worked out from which input has voltage on its
+  `VAC` pin, whether its enable bit is set and whether `VBUS` is up. When both ports could be
+  feeding the board it reads `USB or Solar`, because the charger does not say which one it chose.
+  (`ACRB1_STAT` and `ACRB2_STAT` only report that each FET pair is fitted, not that it conducts.)
+- The selection is not remembered across a restart. The charger starts in Auto.
+
 ## `bq34z100`
 
 A `sensor` platform, because that is where the bulk of its entities live.
