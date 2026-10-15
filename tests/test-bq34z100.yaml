@@ -37,6 +37,7 @@ sensor:
     external_thermistor: true
     lifepo4_relax: true
     expected_chem_id: 0x0402
+    alert_configuration: [low_charge, critical_charge, discharging]
 
     state_of_charge:
       name: "Battery Level"

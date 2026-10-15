@@ -86,6 +86,9 @@ CONF_CHARGER_FAULT = "charger_fault"
 # Switches
 CONF_ENABLE_CHARGING = "enable_charging"
 CONF_ENABLE_HIZ = "enable_hiz"
+CONF_INPUT_SELECTION = "input_selection"
+CONF_ACTIVE_INPUT = "active_input"
+INPUT_SELECTION_OPTIONS = ["Auto", "Force USB", "Force Solar", "Off"]
 CONF_ENABLE_MPPT = "enable_mppt"
 CONF_ENABLE_STAT_LED = "enable_stat_led"
 CONF_ENABLE_ACDRV1 = "enable_acdrv1"
@@ -157,6 +160,7 @@ BQ25798Component = bq25798_ns.class_(
 
 BQ25798ChargingSwitch = bq25798_ns.class_("BQ25798ChargingSwitch", switch.Switch, cg.Component)
 BQ25798HizSwitch = bq25798_ns.class_("BQ25798HizSwitch", switch.Switch, cg.Component)
+BQ25798InputSelect = bq25798_ns.class_("BQ25798InputSelect", select.Select, cg.Component)
 BQ25798MpptSwitch = bq25798_ns.class_("BQ25798MpptSwitch", switch.Switch, cg.Component)
 BQ25798StatLedSwitch = bq25798_ns.class_("BQ25798StatLedSwitch", switch.Switch, cg.Component)
 BQ25798Acdrv1Switch = bq25798_ns.class_("BQ25798Acdrv1Switch", switch.Switch, cg.Component)
@@ -383,6 +387,10 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:power-plug",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            cv.Optional(CONF_ACTIVE_INPUT): text_sensor.text_sensor_schema(
+                icon="mdi:power-plug",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_CHARGER_FAULT): text_sensor.text_sensor_schema(
                 icon="mdi:alert-circle-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -465,6 +473,12 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:bell-cancel",
                 entity_category=ENTITY_CATEGORY_CONFIG,
             ),
+            # --- Input selection (which port may power the board) ---
+            cv.Optional(CONF_INPUT_SELECTION): select.select_schema(
+                BQ25798InputSelect,
+                icon="mdi:power-plug",
+                entity_category=ENTITY_CATEGORY_CONFIG,
+            ),
             # --- Selects (MPPT tuning) ---
             cv.Optional(CONF_MPPT_VOC_RATIO): select.select_schema(
                 BQ25798VocRatioSelect,
@@ -515,6 +529,7 @@ BINARY_SENSOR_SETTERS = {
 TEXT_SENSOR_SETTERS = {
     CONF_CHARGE_STATUS: "set_charge_status_text_sensor",
     CONF_INPUT_SOURCE: "set_input_source_text_sensor",
+    CONF_ACTIVE_INPUT: "set_active_input_text_sensor",
     CONF_CHARGER_FAULT: "set_charger_fault_text_sensor",
 }
 
@@ -545,6 +560,7 @@ BUTTON_KEYS = [
 ]
 
 SELECT_SETTERS = {
+    CONF_INPUT_SELECTION: ("set_input_select", INPUT_SELECTION_OPTIONS),
     CONF_MPPT_VOC_RATIO: ("set_voc_ratio_select", VOC_RATIO_OPTIONS),
     CONF_MPPT_VOC_DELAY: ("set_voc_delay_select", VOC_DELAY_OPTIONS),
     CONF_MPPT_VOC_RATE: ("set_voc_rate_select", VOC_RATE_OPTIONS),

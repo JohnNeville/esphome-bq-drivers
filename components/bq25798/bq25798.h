@@ -133,6 +133,7 @@ class BQ25798ShutdownButton;
 class BQ25798PowerCycleButton;
 class BQ25798ResetButton;
 class BQ25798ClearInterruptsButton;
+class BQ25798InputSelect;
 class BQ25798VocRatioSelect;
 class BQ25798VocDelaySelect;
 class BQ25798VocRateSelect;
@@ -182,6 +183,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_min_sys_voltage_number(BQ25798MinSysVoltageNumber *n) { min_sys_voltage_number_ = n; }
 
   void set_voc_ratio_select(BQ25798VocRatioSelect *s) { voc_ratio_select_ = s; }
+  void set_input_select(BQ25798InputSelect *s) { input_select_ = s; }
+  void set_active_input_text_sensor(text_sensor::TextSensor *s) { active_input_text_sensor_ = s; }
   void set_voc_delay_select(BQ25798VocDelaySelect *s) { voc_delay_select_ = s; }
   void set_voc_rate_select(BQ25798VocRateSelect *s) { voc_rate_select_ = s; }
 
@@ -246,6 +249,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // Called by the child entities.
   bool enable_charging(bool enable);
   bool enable_hiz(bool enable);
+  // index: 0 Auto, 1 Force USB, 2 Force Solar, 3 Off. See README.md.
+  bool set_input_selection(size_t index);
   bool enable_mppt(bool enable);
   bool enable_stat_led(bool enable);
   bool enable_acdrv(uint8_t index, bool enable);
@@ -273,6 +278,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void configure_adc_();
   void configure_defaults_();
   void publish_control_states_();
+  void input_selection_step_();
   void kick_watchdog_();
 
   void publish_voltage_(sensor::Sensor *s, uint8_t reg);
@@ -316,6 +322,11 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   BQ25798MinSysVoltageNumber *min_sys_voltage_number_{nullptr};
 
   BQ25798VocRatioSelect *voc_ratio_select_{nullptr};
+  BQ25798InputSelect *input_select_{nullptr};
+  text_sensor::TextSensor *active_input_text_sensor_{nullptr};
+  bool input_busy_{false};
+  int8_t input_requested_{-1};
+  uint32_t input_deadline_{0};
   BQ25798VocDelaySelect *voc_delay_select_{nullptr};
   BQ25798VocRateSelect *voc_rate_select_{nullptr};
 
@@ -481,6 +492,15 @@ template<typename... Ts> class ClearInterruptsAction : public Action<Ts...> {
 };
 
 // --- Selects (MPPT tuning, REG15) ------------------------------------------
+
+class BQ25798InputSelect : public BQ25798Child<select::Select> {
+ public:
+  void control(const std::string &value) override {
+    auto index = this->index_of(value);
+    if (index.has_value() && this->parent_->set_input_selection(*index))
+      this->publish_state(value);
+  }
+};
 
 class BQ25798VocRatioSelect : public BQ25798Child<select::Select> {
  public:

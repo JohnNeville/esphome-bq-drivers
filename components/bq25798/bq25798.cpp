@@ -185,6 +185,68 @@ bool BQ25798Component::enable_hiz(bool enable) {
   return this->modify_u8_(REG0F_CHG_CTRL0, 0x04, enable ? 0x04 : 0x00);
 }
 
+// Input selection. The charger's EN_ACDRV bits alone do not open an input that is already
+// placed; DIS_ACDRV (REG0x12 bit 7) forces both drivers off, and the datasheet's way to swap
+// inputs is: DIS_ACDRV = 1, set the EN_ACDRV bits, wait for VBUS to fall below the present
+// threshold, then DIS_ACDRV = 0. When the board is already running from a port that the new
+// choice keeps, only the EN bits are written, so the supply is not interrupted.
+static const size_t INPUT_AUTO = 0, INPUT_USB = 1, INPUT_SOLAR = 2, INPUT_OFF = 3;
+static const uint32_t INPUT_VBUS_WAIT_MS = 15000;
+
+bool BQ25798Component::set_input_selection(size_t index) {
+  if (index > INPUT_OFF)
+    return false;
+  if (this->input_busy_) {
+    ESP_LOGW(TAG, "An input selection change is still in progress");
+    return false;
+  }
+  uint8_t ctrl3, ctrl4, status0;
+  if (!this->read_u8_(REG12_CHG_CTRL3, ctrl3) || !this->read_u8_(REG13_CHG_CTRL4, ctrl4) ||
+      !this->read_u8_(REG1B_STATUS0, status0))
+    return false;
+
+  this->input_requested_ = static_cast<int8_t>(index);
+  if (index == INPUT_OFF)
+    return this->modify_u8_(REG12_CHG_CTRL3, 0x80, 0x80);
+
+  const bool want1 = index == INPUT_AUTO || index == INPUT_USB;
+  const bool want2 = index == INPUT_AUTO || index == INPUT_SOLAR;
+  const uint8_t en_bits = (want1 ? 0x40 : 0x00) | (want2 ? 0x80 : 0x00);
+  const bool drivers_disabled = (ctrl3 & 0x80) != 0;
+  // A port may be feeding the board when it has voltage on its VAC pin, its enable bit is set and
+  // VBUS is up. If both could be, assume either may be. (ACRB_STAT only says the FET pair exists.)
+  const bool vbus_present = (status0 & 0x01) != 0;
+  const bool feeding1 = vbus_present && !drivers_disabled && (status0 & 0x02) != 0 && (ctrl4 & 0x40) != 0;
+  const bool feeding2 = vbus_present && !drivers_disabled && (status0 & 0x04) != 0 && (ctrl4 & 0x80) != 0;
+  const bool must_open = (feeding1 && !want1) || (feeding2 && !want2);
+
+  if (!must_open && !drivers_disabled)
+    return this->modify_u8_(REG13_CHG_CTRL4, 0xC0, en_bits);
+
+  if (!drivers_disabled && !this->modify_u8_(REG12_CHG_CTRL3, 0x80, 0x80))
+    return false;
+  if (!this->modify_u8_(REG13_CHG_CTRL4, 0xC0, en_bits))
+    return false;
+  this->input_busy_ = true;
+  this->input_deadline_ = millis() + INPUT_VBUS_WAIT_MS;
+  this->set_timeout("input_selection", 250, [this]() { this->input_selection_step_(); });
+  return true;
+}
+
+void BQ25798Component::input_selection_step_() {
+  uint8_t status0;
+  const bool vbus_present = this->read_u8_(REG1B_STATUS0, status0) && (status0 & 0x01) != 0;
+  if (vbus_present && static_cast<int32_t>(millis() - this->input_deadline_) < 0) {
+    this->set_timeout("input_selection", 250, [this]() { this->input_selection_step_(); });
+    return;
+  }
+  if (vbus_present)
+    ESP_LOGW(TAG, "VBUS still present after %u ms; turning the input drivers back on anyway", INPUT_VBUS_WAIT_MS);
+  this->modify_u8_(REG12_CHG_CTRL3, 0x80, 0x00);
+  this->input_busy_ = false;
+  this->publish_control_states_();
+}
+
 bool BQ25798Component::enable_mppt(bool enable) {
   this->mppt_requested_ = enable;
   if (enable) {
@@ -326,7 +388,7 @@ void BQ25798Component::on_shutdown() {
 // ---------------------------------------------------------------------------
 
 void BQ25798Component::publish_control_states_() {
-  uint8_t ctrl0, ctrl4, mppt;
+  uint8_t ctrl0, ctrl3, ctrl4, mppt;
   if (this->read_u8_(REG0F_CHG_CTRL0, ctrl0)) {
     if (this->charging_switch_ != nullptr)
       this->charging_switch_->publish_state((ctrl0 & 0x20) != 0);
@@ -334,6 +396,51 @@ void BQ25798Component::publish_control_states_() {
       this->hiz_switch_->publish_state((ctrl0 & 0x04) != 0);
     if (this->ico_switch_ != nullptr)
       this->ico_switch_->publish_state((ctrl0 & 0x10) != 0);
+  }
+  if (this->input_select_ != nullptr && !this->input_busy_ && this->read_u8_(REG12_CHG_CTRL3, ctrl3) &&
+      this->read_u8_(REG13_CHG_CTRL4, ctrl4)) {
+    // The enable bits show what the charger decided, not what was asked for: once an input is
+    // picked the charger clears the other port's bit, so Auto and Force USB read the same. The
+    // drop-down therefore keeps showing the request, and only changes when the charger's behaviour
+    // contradicts it (a forced port was overridden, or the drivers were switched off or on).
+    const bool en1 = (ctrl4 & 0x40) != 0, en2 = (ctrl4 & 0x80) != 0;
+    uint8_t status0_now;
+    const bool have_status = this->read_u8_(REG1B_STATUS0, status0_now);
+    const bool vac1 = have_status && (status0_now & 0x02) != 0;
+    const bool vac2 = have_status && (status0_now & 0x04) != 0;
+    const bool disabled = (ctrl3 & 0x80) != 0;
+
+    int shown;
+    if (this->input_requested_ < 0) {
+      // Nothing requested yet (just booted): show what the registers say.
+      if (disabled || (!en1 && !en2))
+        shown = INPUT_OFF;
+      else if (en1 && en2)
+        shown = INPUT_AUTO;
+      else
+        shown = en1 ? INPUT_USB : INPUT_SOLAR;
+    } else {
+      shown = this->input_requested_;
+      if (shown == INPUT_OFF) {
+        if (!disabled)
+          shown = INPUT_AUTO;
+      } else if (disabled) {
+        shown = INPUT_OFF;
+      } else if (shown == INPUT_USB && en2 && vac2) {
+        shown = INPUT_AUTO;
+      } else if (shown == INPUT_SOLAR && en1 && vac1) {
+        shown = INPUT_AUTO;
+      }
+    }
+    const auto &options = this->input_select_->traits.get_options();
+    if (static_cast<size_t>(shown) < options.size()) {
+      if (this->input_requested_ >= 0 && shown != this->input_requested_) {
+        ESP_LOGW(TAG, "Input selection was set to '%s' but the charger overrode it; showing '%s'",
+                 std::string(options[this->input_requested_]).c_str(), std::string(options[shown]).c_str());
+      }
+      this->input_requested_ = static_cast<int8_t>(shown);
+      this->input_select_->publish_state(options[shown]);
+    }
   }
   if (this->read_u8_(REG13_CHG_CTRL4, ctrl4)) {
     if (this->stat_led_switch_ != nullptr)
@@ -440,6 +547,22 @@ void BQ25798Component::update() {
 
   uint8_t status0, status1, status2;
   if (this->read_u8_(REG1B_STATUS0, status0)) {
+    if (this->active_input_text_sensor_ != nullptr) {
+      uint8_t c3, c4;
+      std::string active = "Unknown";
+      if (this->read_u8_(REG12_CHG_CTRL3, c3) && this->read_u8_(REG13_CHG_CTRL4, c4)) {
+        const bool vbus = (status0 & 0x01) != 0;
+        const bool cand1 = (c3 & 0x80) == 0 && (status0 & 0x02) != 0 && (c4 & 0x40) != 0;
+        const bool cand2 = (c3 & 0x80) == 0 && (status0 & 0x04) != 0 && (c4 & 0x80) != 0;
+        if (!vbus || (!cand1 && !cand2))
+          active = "None";
+        else if (cand1 && cand2)
+          active = "USB or Solar";
+        else
+          active = cand1 ? "USB" : "Solar";
+      }
+      this->active_input_text_sensor_->publish_state(active);
+    }
     if (this->vbus_present_sensor_ != nullptr)
       this->vbus_present_sensor_->publish_state((status0 & 0x01) != 0);
     if (this->vac1_present_sensor_ != nullptr)
