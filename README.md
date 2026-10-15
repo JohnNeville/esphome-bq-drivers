@@ -151,10 +151,15 @@ bq25798:
 
 - **Why not the per-port switches?** `EN_ACDRV1` and `EN_ACDRV2` only decide whether a driver may
   turn on. Writing 0 does not open an input that is already placed. The datasheet's way to
-  open one is `DIS_ACDRV`, so a change that has to open a placed input sets `DIS_ACDRV`, writes
-  the enable bits, waits for `VBUS` to fall below the present threshold (15 s at most) and
-  clears `DIS_ACDRV` again. Choosing a mode that keeps the port the board is already running
+  open one is `DIS_ACDRV`, so a change that has to open a placed input sets `DIS_ACDRV`, waits for
+  `VBUS` to fall below the present threshold (15 s at most), clears `DIS_ACDRV` again and then
+  writes the enable bits (the charger forces them to 0 while `DIS_ACDRV` is set). Choosing a mode that keeps the port the board is already running
   from only writes the enable bits, so the supply is not interrupted.
+- **Auto** lets the charger decide, as it does by itself: it turns on the path where a valid input
+  appears first, port 1 (USB) wins if both appear together, and it swaps by itself if the active one
+  fails. Setting both enable bits at once is ignored by the charger, so Auto never does that. If an
+  input is already working it is left alone; from a cold start (after Off, say) only the primary
+  valid port is enabled.
 - **Off** is the same as setting `DIS_ACDRV` by hand: the board runs from the battery and does
   not charge. With no battery fitted it browns out.
 - **Force USB and Force Solar are preferences, not locks.** The charger sets `EN_ACDRV1` itself when
