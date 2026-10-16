@@ -72,12 +72,18 @@ chemistry in. All three options are optional and templatable:
     chemistry: li_ion          # lifepo4, li_ion, li_ion_4_35 or li_ion_4_40; not custom
     battery_capacity: 2000     # mAh, sets the C/10 termination current
     charge_current: 500        # mA, the default restored after a reset
+    ts_ignore: false           # true sets TS_IGNORE: see below
 ```
 
 The chemistry still sets the charge voltage limit and nothing else does: the action takes a
 name from the table above, never a voltage, and an unknown name changes nothing and logs an
 error. The new values are kept, so a register reset or a watchdog expiry reapplies them
-rather than the YAML ones. Keep `chemistry:` in the YAML as the value used until the action
+rather than the YAML ones.
+
+`ts_ignore` sets or clears the charger's `TS_IGNORE` bit at run time, so a device can let its
+owner say whether a thermistor is fitted. Setting it turns off the charger's battery-temperature
+protection (JEITA charging limits and the hot/cold cut-offs); with an open TS divider and the bit
+clear, the charger reads "too cold" and does not charge. Keep `chemistry:` in the YAML as the value used until the action
 first runs, and choose one that cannot overcharge any cell you ship for (`lifepo4`, at 3.65 V
 per cell, is safe for a lithium-ion cell too; the reverse is not).
 

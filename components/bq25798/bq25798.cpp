@@ -332,7 +332,8 @@ static float chemistry_cell_voltage(const std::string &name) {
   return NAN;
 }
 
-bool BQ25798Component::configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma) {
+bool BQ25798Component::configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma,
+                                         int ts_ignore) {
   float limit = this->charge_voltage_limit_;
   if (!chemistry.empty()) {
     float per_cell = chemistry_cell_voltage(chemistry);
@@ -352,6 +353,17 @@ bool BQ25798Component::configure_battery(const std::string &chemistry, int capac
   if (charge_current_ma > 0)
     this->default_charge_current_ = static_cast<float>(charge_current_ma);
   this->apply_battery_settings_();
+  if (ts_ignore >= 0) {
+    // Kept in the member as well: configure_defaults_ writes it again after a register reset or
+    // a watchdog expiry, and must not put the build-time value back.
+    this->ts_ignore_ = ts_ignore == 1;
+    this->modify_u8_(REG18_NTC_CTRL1, 0x01, this->ts_ignore_ ? 0x01 : 0x00);
+    if (this->ts_ignore_) {
+      ESP_LOGW(TAG, "TS_IGNORE is set: charging is no longer qualified against the battery temperature");
+    } else {
+      ESP_LOGI(TAG, "TS_IGNORE is clear: charging is qualified against the battery temperature");
+    }
+  }
   ESP_LOGI(TAG, "Battery settings applied: charge voltage limit %.2f V, %u mAh, %.0f mA", this->charge_voltage_limit_,
            this->battery_capacity_, this->default_charge_current_);
   return true;

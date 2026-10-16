@@ -147,3 +147,9 @@ interval:
       - bq25798.configure_battery:
           id: charger_test
           charge_current: 750
+      - bq25798.configure_battery:
+          id: charger_test
+          ts_ignore: true
+      - bq25798.configure_battery:
+          id: charger_test
+          ts_ignore: !lambda 'return false;'

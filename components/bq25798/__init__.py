@@ -687,6 +687,7 @@ CONF_CHARGE_CURRENT_MA = "charge_current"
             cv.Optional(CONF_CHARGE_CURRENT_MA): cv.templatable(
                 cv.int_range(min=50, max=5000)
             ),
+            cv.Optional(CONF_TS_IGNORE): cv.templatable(cv.boolean),
         }
     ),
     synchronous=True,
@@ -703,4 +704,7 @@ async def bq25798_configure_battery_to_code(config, action_id, template_arg, arg
     if CONF_CHARGE_CURRENT_MA in config:
         template_ = await cg.templatable(config[CONF_CHARGE_CURRENT_MA], args, cg.uint16)
         cg.add(var.set_charge_current(template_))
+    if CONF_TS_IGNORE in config:
+        template_ = await cg.templatable(config[CONF_TS_IGNORE], args, bool)
+        cg.add(var.set_ts_ignore(template_))
     return var
