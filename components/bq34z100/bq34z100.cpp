@@ -253,6 +253,32 @@ void BQ34Z100Component::apply_configuration_() {
   this->seal_();
 }
 
+bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax) {
+  if (capacity_mah >= 0)
+    this->design_capacity_ = static_cast<int16_t>(clamp<int>(capacity_mah, 0, 32767));
+  if (energy_mwh >= 0) {
+    if (energy_mwh > 32767)
+      ESP_LOGW(TAG, "Design energy %d mWh does not fit the gauge (limit 32767 mWh); using the limit", energy_mwh);
+    this->design_energy_ = static_cast<int16_t>(clamp<int>(energy_mwh, 0, 32767));
+  }
+  if (relax == 1) {
+    this->lifepo4_relax_ = true;
+    this->lifepo4_relax_clear_ = false;
+  } else if (relax == 0) {
+    this->lifepo4_relax_ = false;
+    this->lifepo4_relax_clear_ = true;
+  }
+  if (!this->setup_ok_) {
+    // Called before setup() reached the gauge (an entity restored from flash can do this).
+    // The values are kept and setup() writes them, because asking for them is the opt-in.
+    ESP_LOGD(TAG, "Pack parameters kept; they will be written when the gauge starts");
+    this->apply_configuration_flag_ = true;
+    return true;
+  }
+  this->apply_configuration_();
+  return true;
+}
+
 bool BQ34Z100Component::apply_pack_configuration_() {
   uint8_t raw[2];
   if (!this->read_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION, raw, 2))
@@ -275,12 +301,14 @@ bool BQ34Z100Component::apply_pack_configuration_() {
   uint8_t updated[2] = {static_cast<uint8_t>(config >> 8), static_cast<uint8_t>(config & 0xFF)};
   bool ok = this->update_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION, updated, 2);
 
-  if (this->lifepo4_relax_) {
+  if (this->lifepo4_relax_ || this->lifepo4_relax_clear_) {
     uint8_t config_b;
     if (this->read_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION_B, &config_b, 1)) {
       // LFPRelax and DoDWT only do anything once the gauge is running a
-      // 400-series chemistry, which cannot be loaded over I2C.
-      uint8_t wanted = config_b | PACK_CFG_B_LFP_RELAX | PACK_CFG_B_DOD_WT;
+      // 400-series chemistry, which cannot be loaded over I2C. The build-time option only ever
+      // sets them; configure_pack can also clear them, for a switch back to a lithium-ion cell.
+      uint8_t bits = PACK_CFG_B_LFP_RELAX | PACK_CFG_B_DOD_WT;
+      uint8_t wanted = this->lifepo4_relax_ ? (config_b | bits) : (config_b & ~bits);
       ok &= this->update_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION_B, &wanted, 1);
     }
   }

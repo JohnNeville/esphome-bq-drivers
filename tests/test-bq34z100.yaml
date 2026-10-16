@@ -23,6 +23,7 @@ i2c:
 
 sensor:
   - platform: bq34z100
+    id: gauge_test
     i2c_id: bus_internal
     address: 0x55
     update_interval: 30s
@@ -102,3 +103,18 @@ sensor:
       name: "Dump Gauge Data Flash"
     clear_alert:
       name: "Clear Gauge Alert"
+
+# Changing the pack parameters at run time.
+interval:
+  - interval: 60s
+    then:
+      - bq34z100.configure_pack:
+          id: gauge_test
+          design_capacity: 2000
+          design_energy: 7400
+          lifepo4_relax: false
+      - bq34z100.configure_pack:
+          id: gauge_test
+          design_capacity: !lambda 'return 6000;'
+          design_energy: !lambda 'return 19200;'
+          lifepo4_relax: !lambda 'return true;'

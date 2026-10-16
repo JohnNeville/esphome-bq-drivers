@@ -199,6 +199,11 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_voltage_divider(uint16_t mv) { voltage_divider_ = mv; }
   void set_external_thermistor(bool external) { external_thermistor_ = external; }
   void set_lifepo4_relax(bool enable) { lifepo4_relax_ = enable; }
+  // Change the pack parameters after boot and write them to data flash now. A negative
+  // capacity or energy leaves that value alone. relax is 1 to set the LFPRelax and DoDWT
+  // bits, 0 to clear them, and -1 to leave them as they are. Each value is compared with what
+  // the gauge holds first, so calling this on every boot does not wear the flash.
+  bool configure_pack(int capacity_mah, int energy_mwh, int relax);
   // Which Flags() bits pull the ALERT pin low. The gauge ships with 0, so ALERT never
   // asserts until this is written. The bit layout is the same as Flags().
   void set_alert_configuration(uint16_t mask) {
@@ -291,6 +296,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   uint16_t voltage_divider_{0};
   bool external_thermistor_{true};
   bool lifepo4_relax_{false};
+  bool lifepo4_relax_clear_{false};
   uint16_t alert_configuration_{0};
   bool alert_configuration_set_{false};
   uint16_t expected_chem_id_{0};
@@ -333,6 +339,24 @@ template<typename... Ts> class ClearAlertAction : public Action<Ts...> {
  public:
   ClearAlertAction(BQ34Z100Component *parent) : parent_(parent) {}
   void play(Ts... x) override { this->parent_->clear_alert(); }
+
+ protected:
+  BQ34Z100Component *parent_;
+};
+
+template<typename... Ts> class ConfigurePackAction : public Action<Ts...> {
+ public:
+  ConfigurePackAction(BQ34Z100Component *parent) : parent_(parent) {}
+  TEMPLATABLE_VALUE(uint16_t, design_capacity)
+  TEMPLATABLE_VALUE(uint16_t, design_energy)
+  TEMPLATABLE_VALUE(bool, lifepo4_relax)
+
+  void play(Ts... x) override {
+    int capacity = this->design_capacity_.has_value() ? this->design_capacity_.value(x...) : -1;
+    int energy = this->design_energy_.has_value() ? this->design_energy_.value(x...) : -1;
+    int relax = this->lifepo4_relax_.has_value() ? (this->lifepo4_relax_.value(x...) ? 1 : 0) : -1;
+    this->parent_->configure_pack(capacity, energy, relax);
+  }
 
  protected:
   BQ34Z100Component *parent_;

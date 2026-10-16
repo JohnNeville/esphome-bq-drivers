@@ -197,6 +197,14 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // for a 1s pack means 4.2 V. NAN leaves the register alone.
   void set_charge_voltage_limit(float volts) { charge_voltage_limit_ = volts; }
   void set_default_charge_current(float milliamps) { default_charge_current_ = milliamps; }
+  // Cells in series behind the charge voltage limit. A runtime chemistry change scales the
+  // per-cell voltage by this.
+  void set_cell_count(uint8_t count) { cell_count_ = count; }
+  // Change the chemistry, the pack capacity and the default charge current after boot, and
+  // apply them now. An empty chemistry or a non-positive number leaves that setting alone. A
+  // chemistry this component does not know changes nothing and returns false. The values are
+  // kept, so a register reset or a watchdog expiry puts them back rather than the YAML ones.
+  bool configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma);
   // Hard ceiling applied to every charge-current write, including the one
   // restored at boot. Boards whose copper is rated below the IC's 5 A must
   // set this; see the SunSprout hub, which is limited to 2000 mA.
@@ -276,6 +284,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool modify_u8_(uint8_t reg, uint8_t mask, uint8_t value);
 
   void configure_adc_();
+  void apply_battery_settings_();
   void configure_defaults_();
   void publish_control_states_();
   void input_selection_step_();
@@ -338,6 +347,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool auto_input_detection_{true};
 
   uint16_t battery_capacity_{0};
+  uint8_t cell_count_{1};
   uint16_t max_charge_current_{ICHG_MAX_MA};
   float charge_voltage_limit_{NAN};
   float default_charge_current_{NAN};
@@ -481,6 +491,24 @@ class BQ25798ClearInterruptsButton : public BQ25798Child<button::Button> {
 };
 
 // --- Actions ---------------------------------------------------------------
+
+template<typename... Ts> class ConfigureBatteryAction : public Action<Ts...> {
+ public:
+  ConfigureBatteryAction(BQ25798Component *parent) : parent_(parent) {}
+  TEMPLATABLE_VALUE(std::string, chemistry)
+  TEMPLATABLE_VALUE(uint16_t, battery_capacity)
+  TEMPLATABLE_VALUE(uint16_t, charge_current)
+
+  void play(Ts... x) override {
+    std::string chemistry = this->chemistry_.has_value() ? this->chemistry_.value(x...) : std::string();
+    int capacity = this->battery_capacity_.has_value() ? this->battery_capacity_.value(x...) : 0;
+    int current = this->charge_current_.has_value() ? this->charge_current_.value(x...) : 0;
+    this->parent_->configure_battery(chemistry, capacity, current);
+  }
+
+ protected:
+  BQ25798Component *parent_;
+};
 
 template<typename... Ts> class ClearInterruptsAction : public Action<Ts...> {
  public:

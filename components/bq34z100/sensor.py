@@ -112,6 +112,7 @@ BQ34Z100ResetButton = bq34z100_ns.class_("BQ34Z100ResetButton", button.Button, c
 BQ34Z100DumpButton = bq34z100_ns.class_("BQ34Z100DumpButton", button.Button, cg.Component)
 BQ34Z100ClearAlertButton = bq34z100_ns.class_("BQ34Z100ClearAlertButton", button.Button, cg.Component)
 ClearAlertAction = bq34z100_ns.class_("ClearAlertAction", automation.Action)
+ConfigurePackAction = bq34z100_ns.class_("ConfigurePackAction", automation.Action)
 
 
 def _capacity_sensor():
@@ -413,3 +414,35 @@ async def to_code(config):
 async def bq34z100_clear_alert_to_code(config, action_id, template_arg, args):
     paren = await cg.get_variable(config[CONF_ID])
     return cg.new_Pvariable(action_id, template_arg, paren)
+
+
+@automation.register_action(
+    "bq34z100.configure_pack",
+    ConfigurePackAction,
+    cv.Schema(
+        {
+            cv.Required(CONF_ID): cv.use_id(BQ34Z100Component),
+            cv.Optional(CONF_DESIGN_CAPACITY): cv.templatable(
+                cv.int_range(min=0, max=32767)
+            ),
+            cv.Optional(CONF_DESIGN_ENERGY): cv.templatable(
+                cv.int_range(min=0, max=32767)
+            ),
+            cv.Optional(CONF_LIFEPO4_RELAX): cv.templatable(cv.boolean),
+        }
+    ),
+    synchronous=True,
+)
+async def bq34z100_configure_pack_to_code(config, action_id, template_arg, args):
+    paren = await cg.get_variable(config[CONF_ID])
+    var = cg.new_Pvariable(action_id, template_arg, paren)
+    if CONF_DESIGN_CAPACITY in config:
+        template_ = await cg.templatable(config[CONF_DESIGN_CAPACITY], args, cg.uint16)
+        cg.add(var.set_design_capacity(template_))
+    if CONF_DESIGN_ENERGY in config:
+        template_ = await cg.templatable(config[CONF_DESIGN_ENERGY], args, cg.uint16)
+        cg.add(var.set_design_energy(template_))
+    if CONF_LIFEPO4_RELAX in config:
+        template_ = await cg.templatable(config[CONF_LIFEPO4_RELAX], args, bool)
+        cg.add(var.set_lifepo4_relax(template_))
+    return var
