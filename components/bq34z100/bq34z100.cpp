@@ -254,10 +254,6 @@ void BQ34Z100Component::apply_configuration_() {
 }
 
 bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax) {
-  if (!this->setup_ok_) {
-    ESP_LOGW(TAG, "The gauge did not start, so the pack parameters were not written");
-    return false;
-  }
   if (capacity_mah >= 0)
     this->design_capacity_ = static_cast<int16_t>(clamp<int>(capacity_mah, 0, 32767));
   if (energy_mwh >= 0) {
@@ -271,6 +267,13 @@ bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int rel
   } else if (relax == 0) {
     this->lifepo4_relax_ = false;
     this->lifepo4_relax_clear_ = true;
+  }
+  if (!this->setup_ok_) {
+    // Called before setup() reached the gauge (an entity restored from flash can do this).
+    // The values are kept and setup() writes them, because asking for them is the opt-in.
+    ESP_LOGD(TAG, "Pack parameters kept; they will be written when the gauge starts");
+    this->apply_configuration_flag_ = true;
+    return true;
   }
   this->apply_configuration_();
   return true;
