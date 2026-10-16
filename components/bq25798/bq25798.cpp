@@ -129,6 +129,12 @@ void BQ25798Component::configure_defaults_() {
     ESP_LOGW(TAG, "TS_IGNORE is set: charging is no longer qualified against the battery temperature");
   }
 
+  this->apply_battery_settings_();
+}
+
+// Charge voltage limit, charge current and termination current. Called from
+// configure_defaults_ and again when configure_battery changes them at run time.
+void BQ25798Component::apply_battery_settings_() {
   // The charger powers up at the PROG pin's defaults, which for a 1s pack
   // means 4.2 V. A LiFePO4 pack needs its own limit applied before any
   // charging happens, so the chemistry-derived value is written here rather
@@ -309,6 +315,46 @@ bool BQ25798Component::enable_ico(bool enable) {
     return false;
   }
   return this->modify_u8_(REG0F_CHG_CTRL0, 0x10, enable ? 0x10 : 0x00);
+}
+
+// Per-cell charge voltage for each chemistry configure_battery accepts, in volts. Keep in step
+// with CHEMISTRY_CELL_VOLTAGE in __init__.py, which builds the compile-time value from the same
+// names. "custom" is deliberately absent: it needs a voltage nobody can pick by mistake.
+static float chemistry_cell_voltage(const std::string &name) {
+  if (name == "lifepo4")
+    return 3.65f;
+  if (name == "li_ion")
+    return 4.20f;
+  if (name == "li_ion_4_35")
+    return 4.35f;
+  if (name == "li_ion_4_40")
+    return 4.40f;
+  return NAN;
+}
+
+bool BQ25798Component::configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma) {
+  float limit = this->charge_voltage_limit_;
+  if (!chemistry.empty()) {
+    float per_cell = chemistry_cell_voltage(chemistry);
+    if (std::isnan(per_cell)) {
+      ESP_LOGE(TAG, "Unknown chemistry '%s': battery settings left as they were", chemistry.c_str());
+      return false;
+    }
+    limit = per_cell * this->cell_count_;
+  }
+  if (this->is_failed()) {
+    ESP_LOGW(TAG, "The charger did not start, so the battery settings were not applied");
+    return false;
+  }
+  this->charge_voltage_limit_ = limit;
+  if (capacity_mah > 0)
+    this->battery_capacity_ = clamp<int>(capacity_mah, 1, 20000);
+  if (charge_current_ma > 0)
+    this->default_charge_current_ = static_cast<float>(charge_current_ma);
+  this->apply_battery_settings_();
+  ESP_LOGI(TAG, "Battery settings applied: charge voltage limit %.2f V, %u mAh, %.0f mA", this->charge_voltage_limit_,
+           this->battery_capacity_, this->default_charge_current_);
+  return true;
 }
 
 bool BQ25798Component::set_charge_current(float current_ma) {

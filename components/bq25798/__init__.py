@@ -179,6 +179,7 @@ BQ25798PowerCycleButton = bq25798_ns.class_("BQ25798PowerCycleButton", button.Bu
 BQ25798ResetButton = bq25798_ns.class_("BQ25798ResetButton", button.Button, cg.Component)
 BQ25798ClearInterruptsButton = bq25798_ns.class_("BQ25798ClearInterruptsButton", button.Button, cg.Component)
 ClearInterruptsAction = bq25798_ns.class_("ClearInterruptsAction", automation.Action)
+ConfigureBatteryAction = bq25798_ns.class_("ConfigureBatteryAction", automation.Action)
 
 BQ25798VocRatioSelect = bq25798_ns.class_("BQ25798VocRatioSelect", select.Select, cg.Component)
 BQ25798VocDelaySelect = bq25798_ns.class_("BQ25798VocDelaySelect", select.Select, cg.Component)
@@ -575,6 +576,7 @@ async def to_code(config):
     if CONF_BATTERY_CAPACITY in config:
         cg.add(var.set_battery_capacity(config[CONF_BATTERY_CAPACITY]))
     cg.add(var.set_max_charge_current(config[CONF_MAX_CHARGE_CURRENT]))
+    cg.add(var.set_cell_count(config[CONF_CELL_COUNT]))
     cg.add(var.set_ship_fet_present(config[CONF_SHIP_FET_PRESENT]))
     cg.add(var.set_ship_fet_action_delay(config[CONF_SHIP_FET_ACTION_DELAY]))
     cg.add(var.set_battery_ocp(config[CONF_BATTERY_OCP]))
@@ -661,3 +663,44 @@ async def to_code(config):
 async def bq25798_clear_interrupts_to_code(config, action_id, template_arg, args):
     paren = await cg.get_variable(config[CONF_ID])
     return cg.new_Pvariable(action_id, template_arg, paren)
+
+
+# The chemistries bq25798.configure_battery accepts at run time: every named one, but not
+# "custom", which needs a voltage that only a build-time choice should supply.
+RUNTIME_CHEMISTRIES = [name for name, volts in CHEMISTRY_CELL_VOLTAGE.items() if volts is not None]
+
+CONF_CHARGE_CURRENT_MA = "charge_current"
+
+
+@automation.register_action(
+    "bq25798.configure_battery",
+    ConfigureBatteryAction,
+    cv.Schema(
+        {
+            cv.Required(CONF_ID): cv.use_id(BQ25798Component),
+            cv.Optional(CONF_CHEMISTRY): cv.templatable(
+                cv.one_of(*RUNTIME_CHEMISTRIES, lower=True)
+            ),
+            cv.Optional(CONF_BATTERY_CAPACITY): cv.templatable(
+                cv.int_range(min=1, max=20000)
+            ),
+            cv.Optional(CONF_CHARGE_CURRENT_MA): cv.templatable(
+                cv.int_range(min=50, max=5000)
+            ),
+        }
+    ),
+    synchronous=True,
+)
+async def bq25798_configure_battery_to_code(config, action_id, template_arg, args):
+    paren = await cg.get_variable(config[CONF_ID])
+    var = cg.new_Pvariable(action_id, template_arg, paren)
+    if CONF_CHEMISTRY in config:
+        template_ = await cg.templatable(config[CONF_CHEMISTRY], args, cg.std_string)
+        cg.add(var.set_chemistry(template_))
+    if CONF_BATTERY_CAPACITY in config:
+        template_ = await cg.templatable(config[CONF_BATTERY_CAPACITY], args, cg.uint16)
+        cg.add(var.set_battery_capacity(template_))
+    if CONF_CHARGE_CURRENT_MA in config:
+        template_ = await cg.templatable(config[CONF_CHARGE_CURRENT_MA], args, cg.uint16)
+        cg.add(var.set_charge_current(template_))
+    return var

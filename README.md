@@ -62,6 +62,25 @@ during setup, and rewrites it after any register reset.
 is required. A limit that protects the cell should not be something anyone can drag in Home
 Assistant, so exposing the entity means opting out of the derived value entirely.
 
+**Changing the battery at run time.** A device whose owner picks the cell after the firmware
+is built (a factory image, say) can call `bq25798.configure_battery` instead of baking the
+chemistry in. All three options are optional and templatable:
+
+```yaml
+- bq25798.configure_battery:
+    id: charger
+    chemistry: li_ion          # lifepo4, li_ion, li_ion_4_35 or li_ion_4_40; not custom
+    battery_capacity: 2000     # mAh, sets the C/10 termination current
+    charge_current: 500        # mA, the default restored after a reset
+```
+
+The chemistry still sets the charge voltage limit and nothing else does: the action takes a
+name from the table above, never a voltage, and an unknown name changes nothing and logs an
+error. The new values are kept, so a register reset or a watchdog expiry reapplies them
+rather than the YAML ones. Keep `chemistry:` in the YAML as the value used until the action
+first runs, and choose one that cannot overcharge any cell you ship for (`lifepo4`, at 3.65 V
+per cell, is safe for a lithium-ion cell too; the reverse is not).
+
 **The watchdog resets your settings.** When the I2C watchdog expires, the charger reverts
 the charge current, termination current, `EN_CHG` and most timer settings to the defaults
 read from the `PROG` pin at power-on. The component disables the watchdog by default. Set
@@ -210,6 +229,26 @@ differs, then read back to confirm it stuck. `apply_configuration` defaults to `
 you can declare the right values in a board package and flip the switch once when a cell is
 attached; with it off, the component logs a warning at boot saying the values are declared
 but the flash is untouched.
+
+### Changing the pack at run time
+
+`bq34z100.configure_pack` sets the design capacity, design energy and `lifepo4_relax` after
+boot and writes them to data flash straight away, whatever `apply_configuration` says; calling
+the action is the opt-in. All three options are optional and templatable:
+
+```yaml
+- bq34z100.configure_pack:
+    id: fuel_gauge
+    design_capacity: 2000     # mAh
+    design_energy: 7400       # mWh, at most 32767
+    lifepo4_relax: false      # true sets LFPRelax and DoDWT, false clears them
+```
+
+Each value is read first and written only if it differs, so calling it on every boot does
+not wear the flash. The `lifepo4_relax` build option only ever sets the bits; passing `false` to
+this action also clears them, for a switch from a LiFePO4 to a lithium-ion cell. Like the
+build option it does nothing to the chemistry table, which still needs bqStudio (see
+[Selecting the battery chemistry](#selecting-the-battery-chemistry)).
 
 ### Alert pin
 
