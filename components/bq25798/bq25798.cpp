@@ -358,6 +358,13 @@ bool BQ25798Component::configure_battery(const std::string &chemistry, int capac
     // a watchdog expiry, and must not put the build-time value back.
     this->ts_ignore_ = ts_ignore == 1;
     this->modify_u8_(REG18_NTC_CTRL1, 0x01, this->ts_ignore_ ? 0x01 : 0x00);
+    // Read it back, so the log shows what the charger holds and not just what was asked for.
+    uint8_t ntc_ctrl1 = 0;
+    if (this->read_u8_(REG18_NTC_CTRL1, ntc_ctrl1)) {
+      ESP_LOGI(TAG, "NTC_CTRL1 (REG0x18) reads 0x%02X: TS_IGNORE %s", ntc_ctrl1, (ntc_ctrl1 & 0x01) ? "set" : "clear");
+    } else {
+      ESP_LOGW(TAG, "Could not read NTC_CTRL1 (REG0x18) back");
+    }
     if (this->ts_ignore_) {
       ESP_LOGW(TAG, "TS_IGNORE is set: charging is no longer qualified against the battery temperature");
     } else {

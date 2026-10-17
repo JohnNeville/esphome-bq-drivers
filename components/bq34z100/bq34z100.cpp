@@ -303,6 +303,16 @@ bool BQ34Z100Component::apply_pack_configuration_() {
   uint8_t updated[2] = {static_cast<uint8_t>(config >> 8), static_cast<uint8_t>(config & 0xFF)};
   bool ok = this->update_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION, updated, 2);
 
+  // Read it back so the log shows what the gauge holds, TEMPS (external thermistor) included.
+  uint8_t held[2];
+  if (this->read_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION, held, 2)) {
+    uint16_t held_config = (static_cast<uint16_t>(held[0]) << 8) | held[1];
+    ESP_LOGI(TAG, "Pack Configuration reads 0x%04X: TEMPS %s (%s thermistor)", held_config,
+             (held_config & PACK_CFG_TEMPS) ? "set" : "clear", (held_config & PACK_CFG_TEMPS) ? "external" : "internal");
+  } else {
+    ESP_LOGW(TAG, "Could not read Pack Configuration back");
+  }
+
   if (this->lifepo4_relax_ || this->lifepo4_relax_clear_) {
     uint8_t config_b;
     if (this->read_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_PACK_CONFIGURATION_B, &config_b, 1)) {
