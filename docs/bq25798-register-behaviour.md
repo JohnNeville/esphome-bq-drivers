@@ -54,6 +54,29 @@ never write).
    A register the charger rewrote without a status edge, such as `VINDPM` after plug-in or `EN_MPPT`
    clearing, gives no interrupt on its own.
 
+## Bench confirmation of the watchdog resets (2026-10-17)
+
+Run on two hub boards, one Li-ion (`VREG` poked to 4.00 V) and one LiFePO4 (`VREG` poked to 3.50 V).
+Known non-default values were written, the watchdog was set to 0.5 s and left to expire with no kick,
+and the 49-byte block `0x00`..`0x30` was read 2 s later. Both boards gave the same result.
+
+| Register | Written | After the expiry |
+|---|---|---|
+| `VREG` | 4.00 V / 3.50 V | **Kept** |
+| `VINDPM` | 4.5 V | **Kept** |
+| `IINDPM` | 1.5 A | **Kept** |
+| `WATCHDOG` field | 0.5 s | **Kept**, so the watchdog keeps expiring until it is written to 0 |
+| `ICHG` | 300 mA | Reset to the PROG default, 1000 mA |
+| `ITERM`, `VRECHG`, safety timers, JEITA (`REG17`) | changed | Reset to defaults |
+| `EN_CHG` | 0 | Reset to 1 (`STOP_WD_CHG` was 0) |
+| `TS_IGNORE`, `EN_IBAT`, `EN_BATOC` | set | Cleared |
+| `ADC_EN` | 1 | Cleared |
+| `VSYSMIN` | 3.75 V / 3.25 V | Reset to the 3.5 V strap value. Table 7-14 lists only `REG_RST` for this field, so the table is wrong here. |
+
+`WD_STAT` (`0x1B` bit 5) and the watchdog flag (`0x22` bit 5) were set. A watchdog expiry therefore does
+not move the charge voltage limit, but it does silently turn off the ADC, the thermistor bypass and
+the battery-discharge current sensing, and restores a 1 A charge current.
+
 ## Register table
 
 Only fields the driver reads or writes, or that could surprise it, are listed. Registers whose every
@@ -63,7 +86,7 @@ bit is reserved or unused here are left out. Offsets are from the datasheet regi
 
 | Reg.field | Meaning | Who | Reset by | Wanted on the hub | Policy |
 |---|---|---|---|---|---|
-| `00 VSYSMIN[5:0]` | Minimum system voltage | H | RST, POR/PROG | Config value (default 3.5 V on 1S) | Enforce |
+| `00 VSYSMIN[5:0]` | Minimum system voltage | H | RST, POR/PROG, **and WD (measured, not in Table 7-14)** | Config value (default 3.5 V on 1S) | Enforce |
 | `01 VREG[10:0]` | Charge voltage limit | H | RST, POR/PROG | From chemistry: 4.20 V Li-ion, 3.60 V LiFePO4 | **Enforce** (safety: wrong value overcharges) |
 | `03 ICHG[8:0]` | Fast-charge current limit | H | WD, RST | `charge_current` setting | Enforce |
 | `05 VINDPM[7:0]` | Input voltage floor | H+C | not reset by RST or WD, 3.6 V on unplug | Auto, or user number | Watch (publish live; enforce only if the user set it explicitly) |
