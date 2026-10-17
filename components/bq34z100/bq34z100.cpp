@@ -253,7 +253,7 @@ void BQ34Z100Component::apply_configuration_() {
   this->seal_();
 }
 
-bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax) {
+bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax, int external_thermistor) {
   if (capacity_mah >= 0)
     this->design_capacity_ = static_cast<int16_t>(clamp<int>(capacity_mah, 0, 32767));
   if (energy_mwh >= 0) {
@@ -261,6 +261,8 @@ bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int rel
       ESP_LOGW(TAG, "Design energy %d mWh does not fit the gauge (limit 32767 mWh); using the limit", energy_mwh);
     this->design_energy_ = static_cast<int16_t>(clamp<int>(energy_mwh, 0, 32767));
   }
+  if (external_thermistor >= 0)
+    this->external_thermistor_ = external_thermistor == 1;
   if (relax == 1) {
     this->lifepo4_relax_ = true;
     this->lifepo4_relax_clear_ = false;
