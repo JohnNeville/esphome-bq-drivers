@@ -231,6 +231,10 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // the charger reverts ICHG and friends to their PROG-pin defaults.
   void set_watchdog(uint8_t encoding) { watchdog_ = encoding; }
 
+  // What the periodic register check does when a register no longer holds what the host asked for:
+  // 0 off, 1 watch (log it and count it, change nothing), 2 enforce (write it back and verify).
+  void set_register_check(uint8_t mode) { register_check_ = mode; }
+
   // TS_IGNORE, REG18[0]. The charger normally suspends charging (and OTG)
   // whenever the TS pin sits outside the JEITA window, and an unpopulated
   // thermistor reads as "far too cold", so a board with nothing on TS will
@@ -278,6 +282,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool ship_fet_action(ShipFetAction action);
   bool reset_registers();
   bool clear_interrupts();
+  // Number of times the periodic check found a register that did not hold what the host asked for.
+  uint32_t get_corrections() const { return corrections_; }
 
  protected:
   bool read_u8_(uint8_t reg, uint8_t &value);
@@ -293,6 +299,10 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void publish_control_states_();
   void input_selection_step_();
   void kick_watchdog_();
+  // One burst read of the whole control, status and ADC-control block, compared with what the host
+  // last asked for. See docs/bq25798-register-behaviour.md for which fields are enforced.
+  void reconcile_();
+  bool correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen);
 
   void publish_voltage_(sensor::Sensor *s, uint8_t reg);
   void publish_current_(sensor::Sensor *s, uint8_t reg);
@@ -363,6 +373,21 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // MPPT self-clears when VBUS falls below the present threshold, so the
   // requested state is remembered and re-asserted rather than assumed sticky.
   bool mppt_requested_{false};
+
+  // What the host last asked for, kept so reconcile_ can tell drift from a deliberate change. -1 means
+  // nobody has asked, and the register is left alone.
+  int8_t want_en_chg_{-1};
+  int8_t want_hiz_{0};
+  int16_t want_vreg_code_{-1};
+  int16_t want_ichg_code_{-1};
+  int16_t want_iterm_code_{-1};
+  int8_t want_voc_pct_{-1};
+  int8_t want_voc_dly_{-1};
+  int8_t want_voc_rate_{-1};
+  uint32_t last_hiz_clear_{0};
+  uint32_t corrections_{0};
+  uint32_t last_drift_log_{0};
+  uint8_t register_check_{1};
 };
 
 // --- Switches --------------------------------------------------------------

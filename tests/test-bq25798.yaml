@@ -34,6 +34,7 @@ bq25798:
   ship_fet_action_delay: false
   battery_ocp: true
   watchdog: disabled
+  register_check: enforce
   ts_resistor_upper: 5.23kOhm
   ts_resistor_lower: 30.1kOhm
   ts_nominal_resistance: 10kOhm

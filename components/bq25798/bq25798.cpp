@@ -7,6 +7,15 @@ namespace bq25798 {
 
 static const char *const TAG = "bq25798";
 
+// How often reconcile_ reads the register block. One 49-byte read is about 9.5 ms on the hub's
+// 50 kHz internal bus, so this is under 0.2% of the bus.
+static const uint32_t RECONCILE_INTERVAL_MS = 5000;
+// The charger sets EN_HIZ when its poor-source test fails and retries by itself every 7 minutes. The
+// host can clear it sooner, but not more often than this.
+static const uint32_t HIZ_CLEAR_MIN_GAP_MS = 30000;
+// In watch mode the same drift is reported at most this often.
+static const uint32_t DRIFT_LOG_GAP_MS = 60000;
+
 // ---------------------------------------------------------------------------
 // Register helpers
 // ---------------------------------------------------------------------------
@@ -87,6 +96,8 @@ void BQ25798Component::setup() {
   this->configure_adc_();
   this->publish_control_states_();
   this->setup_ok_ = true;
+  if (this->register_check_ != 0)
+    this->set_interval("reconcile", RECONCILE_INTERVAL_MS, [this]() { this->reconcile_(); });
 }
 
 void BQ25798Component::configure_defaults_() {
@@ -155,6 +166,7 @@ void BQ25798Component::apply_battery_settings_() {
     uint16_t iterm_ma = this->battery_capacity_ / 10;
     iterm_ma = clamp<uint16_t>(iterm_ma, ITERM_MIN_MA, ITERM_MAX_MA);
     uint8_t code = static_cast<uint8_t>(iterm_ma / static_cast<uint16_t>(ITERM_STEP_MA));
+    this->want_iterm_code_ = code;
     this->modify_u8_(REG09_TERM, 0x1F, code);
     ESP_LOGD(TAG, "Termination current set to %u mA (C/10 of %u mAh)", iterm_ma, this->battery_capacity_);
   }
@@ -184,10 +196,12 @@ void BQ25798Component::kick_watchdog_() {
 // ---------------------------------------------------------------------------
 
 bool BQ25798Component::enable_charging(bool enable) {
+  this->want_en_chg_ = enable ? 1 : 0;
   return this->modify_u8_(REG0F_CHG_CTRL0, 0x20, enable ? 0x20 : 0x00);
 }
 
 bool BQ25798Component::enable_hiz(bool enable) {
+  this->want_hiz_ = enable ? 1 : 0;
   return this->modify_u8_(REG0F_CHG_CTRL0, 0x04, enable ? 0x04 : 0x00);
 }
 
@@ -386,6 +400,7 @@ bool BQ25798Component::set_charge_current(float current_ma) {
     ESP_LOGW(TAG, "Charge current %u mA clamped to %u mA", requested, limited);
   }
   uint16_t code = static_cast<uint16_t>(limited / static_cast<uint16_t>(ICHG_STEP_MA));
+  this->want_ichg_code_ = code & 0x01FF;
   return this->write_u16_(REG03_ICHG, code & 0x01FF);
 }
 
@@ -394,6 +409,7 @@ bool BQ25798Component::set_charge_voltage(float voltage_v) {
     return false;
   uint16_t mv = clamp<uint16_t>(static_cast<uint16_t>(lroundf(voltage_v * 1000.0f)), 3000, 18800);
   uint16_t code = static_cast<uint16_t>(mv / static_cast<uint16_t>(VREG_STEP_MV));
+  this->want_vreg_code_ = code & 0x07FF;
   return this->write_u16_(REG01_VREG, code & 0x07FF);
 }
 
@@ -423,14 +439,17 @@ bool BQ25798Component::set_min_sys_voltage(float voltage_v) {
 }
 
 bool BQ25798Component::set_voc_ratio(size_t index) {
+  this->want_voc_pct_ = static_cast<int8_t>(index & 0x07);
   return this->modify_u8_(REG15_MPPT, 0xE0, static_cast<uint8_t>((index & 0x07) << 5));
 }
 
 bool BQ25798Component::set_voc_delay(size_t index) {
+  this->want_voc_dly_ = static_cast<int8_t>(index & 0x03);
   return this->modify_u8_(REG15_MPPT, 0x18, static_cast<uint8_t>((index & 0x03) << 3));
 }
 
 bool BQ25798Component::set_voc_rate(size_t index) {
+  this->want_voc_rate_ = static_cast<int8_t>(index & 0x03);
   return this->modify_u8_(REG15_MPPT, 0x06, static_cast<uint8_t>((index & 0x03) << 1));
 }
 
@@ -471,6 +490,155 @@ bool BQ25798Component::clear_interrupts() {
 void BQ25798Component::on_shutdown() {
   ESP_LOGI(TAG, "Shutting down; clearing pending interrupts on /INT");
   this->clear_interrupts();
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile: notice and undo changes the host did not make
+// ---------------------------------------------------------------------------
+// The charger changes some control bits itself (EN_HIZ after a failed poor-source test, EN_MPPT when
+// VBUS drops) and a register reset or watchdog expiry returns others to their defaults. None of that
+// raises /INT, so the control registers are read back on a timer. Which fields are enforced, and why,
+// is in docs/bq25798-register-behaviour.md.
+
+bool BQ25798Component::correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen) {
+  if ((seen & mask) == want)
+    return false;
+  this->corrections_++;
+  if (this->register_check_ < 2) {
+    if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
+      this->last_drift_log_ = millis();
+      ESP_LOGW(TAG, "%s (REG0x%02X & 0x%02X) reads 0x%02X, the host asked for 0x%02X (watch only, not changed)", name,
+               reg, mask, seen & mask, want);
+    }
+    return false;
+  }
+  ESP_LOGW(TAG, "%s (REG0x%02X & 0x%02X) read 0x%02X, expected 0x%02X: writing it back", name, reg, mask, seen & mask,
+           want);
+  this->modify_u8_(reg, mask, want);
+  uint8_t now;
+  if (this->read_u8_(reg, now) && (now & mask) != want)
+    ESP_LOGE(TAG, "%s did not take: REG0x%02X reads 0x%02X (locked, or another setting overrides it)", name, reg, now);
+  return true;
+}
+
+void BQ25798Component::reconcile_() {
+  if (!this->setup_ok_ || this->input_busy_)
+    return;
+  // 0x00 to 0x30 covers every control, status, flag and ADC-control register in one transaction.
+  uint8_t r[REG30_ADC_DIS1 + 1];
+  if (!this->read_bytes(REG00_VSYSMIN, r, sizeof(r))) {
+    ESP_LOGW(TAG, "Reconcile read of REG0x00 to REG0x30 failed");
+    return;
+  }
+
+  // The flag registers were cleared by that read, so log whatever they held.
+  const uint8_t *f = &r[REG22_FLAG0];
+  if (f[0] & 0x30) {  // WD, POORSRC
+    ESP_LOGI(TAG, "Charger flags: %s%s", (f[0] & 0x20) ? "watchdog expired " : "",
+             (f[0] & 0x10) ? "poor source detected" : "");
+  }
+  if (f[4] != 0 || f[5] != 0)
+    ESP_LOGW(TAG, "Fault flags: 0x%02X 0x%02X", f[4], f[5]);
+  else if (f[0] || f[1] || f[2] || f[3])
+    ESP_LOGV(TAG, "Charger flags: 0x%02X 0x%02X 0x%02X 0x%02X", f[0], f[1], f[2], f[3]);
+
+  bool changed = false;
+  // Safety-relevant first.
+  if (this->want_vreg_code_ >= 0) {
+    const uint16_t seen = ((static_cast<uint16_t>(r[REG01_VREG]) << 8) | r[REG01_VREG + 1]) & 0x07FF;
+    if (seen != this->want_vreg_code_) {
+      this->corrections_++;
+      if (this->register_check_ < 2) {
+        if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
+          this->last_drift_log_ = millis();
+          ESP_LOGW(TAG, "Charge voltage limit reads %u mV, the host asked for %u mV (watch only, not changed)", seen * 10,
+                   this->want_vreg_code_ * 10);
+        }
+      } else {
+        ESP_LOGW(TAG, "Charge voltage limit read %u mV, expected %u mV: writing it back", seen * 10,
+                 this->want_vreg_code_ * 10);
+        this->write_u16_(REG01_VREG, static_cast<uint16_t>(this->want_vreg_code_));
+        changed = true;
+      }
+    }
+  }
+  if (this->want_ichg_code_ >= 0) {
+    const uint16_t seen = ((static_cast<uint16_t>(r[REG03_ICHG]) << 8) | r[REG03_ICHG + 1]) & 0x01FF;
+    if (seen != this->want_ichg_code_) {
+      this->corrections_++;
+      if (this->register_check_ < 2) {
+        if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
+          this->last_drift_log_ = millis();
+          ESP_LOGW(TAG, "Charge current limit reads %u mA, the host asked for %u mA (watch only, not changed)", seen * 10,
+                   this->want_ichg_code_ * 10);
+        }
+      } else {
+        ESP_LOGW(TAG, "Charge current limit read %u mA, expected %u mA: writing it back", seen * 10,
+                 this->want_ichg_code_ * 10);
+        this->write_u16_(REG03_ICHG, static_cast<uint16_t>(this->want_ichg_code_));
+        changed = true;
+      }
+    }
+  }
+  if (this->want_iterm_code_ >= 0)
+    changed |= this->correct_bits_("ITERM", REG09_TERM, 0x1F, static_cast<uint8_t>(this->want_iterm_code_), r[REG09_TERM]);
+  if (this->want_en_chg_ >= 0)
+    changed |= this->correct_bits_("EN_CHG", REG0F_CHG_CTRL0, 0x20, this->want_en_chg_ ? 0x20 : 0x00, r[REG0F_CHG_CTRL0]);
+  changed |= this->correct_bits_("EN_TERM", REG0F_CHG_CTRL0, 0x02, 0x02, r[REG0F_CHG_CTRL0]);
+  changed |= this->correct_bits_("Safety timers", REG0E_TIMER, 0x38, 0x38, r[REG0E_TIMER]);
+  changed |= this->correct_bits_("WATCHDOG", REG10_CHG_CTRL1, 0x07, this->watchdog_ & 0x07, r[REG10_CHG_CTRL1]);
+
+  // EN_HIZ: the charger sets it after a failed poor-source test and by itself retries every 7 minutes.
+  // A host that wants the input open clears it sooner, but not in a tight loop.
+  const bool hiz_seen = (r[REG0F_CHG_CTRL0] & 0x04) != 0;
+  if (hiz_seen != (this->want_hiz_ != 0)) {
+    if (this->register_check_ < 2) {
+      this->corrections_++;
+      if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
+        this->last_drift_log_ = millis();
+        ESP_LOGW(TAG, "EN_HIZ is %s but the host asked for %s (status0 0x%02X, VBUS %s; watch only, not changed)",
+                 hiz_seen ? "set" : "clear", this->want_hiz_ ? "set" : "clear", r[REG1B_STATUS0],
+                 (r[REG1B_STATUS0] & 0x01) ? "present" : "absent");
+      }
+    } else if (this->want_hiz_ != 0 || (this->last_hiz_clear_ == 0 || millis() - this->last_hiz_clear_ >= HIZ_CLEAR_MIN_GAP_MS)) {
+      this->last_hiz_clear_ = millis();
+      ESP_LOGW(TAG, "EN_HIZ is %s but the host wants it %s (status0 0x%02X, VBUS %s): correcting",
+               hiz_seen ? "set" : "clear", this->want_hiz_ ? "set" : "clear", r[REG1B_STATUS0],
+               (r[REG1B_STATUS0] & 0x01) ? "present" : "absent");
+      this->corrections_++;
+      this->modify_u8_(REG0F_CHG_CTRL0, 0x04, this->want_hiz_ ? 0x04 : 0x00);
+      changed = true;
+    }
+  }
+
+  changed |= this->correct_bits_("AUTO_INDET_EN", REG11_CHG_CTRL2, 0x40, this->auto_input_detection_ ? 0x40 : 0x00,
+                                 r[REG11_CHG_CTRL2]);
+  changed |= this->correct_bits_("EN_OTG", REG12_CHG_CTRL3, 0x40, 0x00, r[REG12_CHG_CTRL3]);
+  changed |= this->correct_bits_("EN_IBUS_OCP", REG13_CHG_CTRL4, 0x01, 0x01, r[REG13_CHG_CTRL4]);
+  changed |= this->correct_bits_("Hiccup protections", REG13_CHG_CTRL4, 0x0C, 0x00, r[REG13_CHG_CTRL4]);
+  changed |= this->correct_bits_("EN_IBAT", REG14_CHG_CTRL5, 0x20, 0x20, r[REG14_CHG_CTRL5]);
+  changed |= this->correct_bits_("EN_IINDPM", REG14_CHG_CTRL5, 0x04, 0x04, r[REG14_CHG_CTRL5]);
+  changed |= this->correct_bits_("SFET_PRESENT", REG14_CHG_CTRL5, 0x80, this->ship_fet_present_ ? 0x80 : 0x00,
+                                 r[REG14_CHG_CTRL5]);
+  if (this->mppt_requested_)
+    changed |= this->correct_bits_("EN_MPPT", REG15_MPPT, 0x01, 0x01, r[REG15_MPPT]);
+  if (this->want_voc_pct_ >= 0)
+    changed |= this->correct_bits_("VOC_PCT", REG15_MPPT, 0xE0, static_cast<uint8_t>(this->want_voc_pct_ << 5),
+                                   r[REG15_MPPT]);
+  if (this->want_voc_dly_ >= 0)
+    changed |= this->correct_bits_("VOC_DLY", REG15_MPPT, 0x18, static_cast<uint8_t>(this->want_voc_dly_ << 3),
+                                   r[REG15_MPPT]);
+  if (this->want_voc_rate_ >= 0)
+    changed |= this->correct_bits_("VOC_RATE", REG15_MPPT, 0x06, static_cast<uint8_t>(this->want_voc_rate_ << 1),
+                                   r[REG15_MPPT]);
+  changed |= this->correct_bits_("TS_IGNORE", REG18_NTC_CTRL1, 0x01, this->ts_ignore_ ? 0x01 : 0x00, r[REG18_NTC_CTRL1]);
+  // ADC: on, continuous, every channel enabled. Entering HIZ or a reset turns the ADC off.
+  changed |= this->correct_bits_("ADC_EN / ADC_RATE", REG2E_ADC_CTRL, 0xC0, 0x80, r[REG2E_ADC_CTRL]);
+  changed |= this->correct_bits_("ADC channel disables 0", REG2F_ADC_DIS0, 0xFE, 0x00, r[REG2F_ADC_DIS0]);
+  changed |= this->correct_bits_("ADC channel disables 1", REG30_ADC_DIS1, 0xF0, 0x00, r[REG30_ADC_DIS1]);
+
+  if (changed)
+    this->publish_control_states_();
 }
 
 // ---------------------------------------------------------------------------
