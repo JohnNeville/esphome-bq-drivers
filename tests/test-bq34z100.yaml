@@ -118,3 +118,9 @@ interval:
           design_capacity: !lambda 'return 6000;'
           design_energy: !lambda 'return 19200;'
           lifepo4_relax: !lambda 'return true;'
+      - bq34z100.configure_pack:
+          id: gauge_test
+          external_thermistor: false
+      - bq34z100.configure_pack:
+          id: gauge_test
+          external_thermistor: !lambda 'return true;'

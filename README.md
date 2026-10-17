@@ -248,10 +248,16 @@ the action is the opt-in. All three options are optional and templatable:
     design_capacity: 2000     # mAh
     design_energy: 7400       # mWh, at most 32767
     lifepo4_relax: false      # true sets LFPRelax and DoDWT, false clears them
+    external_thermistor: false  # false: use the gauge's own temperature sensor
 ```
 
 Each value is read first and written only if it differs, so calling it on every boot does
-not wear the flash. The `lifepo4_relax` build option only ever sets the bits; passing `false` to
+not wear the flash.
+
+`external_thermistor` chooses the gauge's temperature source at run time. With `true` it reads the
+thermistor on its TS pin; with `false` it uses its own sensor, which is the right choice when
+nothing is fitted, because an open TS input reads about -40 C and the gauge then reports
+"Charge inhibited". The `lifepo4_relax` build option only ever sets the bits; passing `false` to
 this action also clears them, for a switch from a LiFePO4 to a lithium-ion cell. Like the
 build option it does nothing to the chemistry table, which still needs bqStudio (see
 [Selecting the battery chemistry](#selecting-the-battery-chemistry)).
