@@ -155,6 +155,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_ibat_current_sensor(sensor::Sensor *s) { ibat_current_sensor_ = s; }
   void set_battery_temperature_sensor(sensor::Sensor *s) { battery_temperature_sensor_ = s; }
   void set_die_temperature_sensor(sensor::Sensor *s) { die_temperature_sensor_ = s; }
+  void set_register_corrections_sensor(sensor::Sensor *s) { register_corrections_sensor_ = s; }
 
   void set_vbus_present_sensor(binary_sensor::BinarySensor *s) { vbus_present_sensor_ = s; }
   void set_vac1_present_sensor(binary_sensor::BinarySensor *s) { vac1_present_sensor_ = s; }
@@ -317,6 +318,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   sensor::Sensor *ibat_current_sensor_{nullptr};
   sensor::Sensor *battery_temperature_sensor_{nullptr};
   sensor::Sensor *die_temperature_sensor_{nullptr};
+  sensor::Sensor *register_corrections_sensor_{nullptr};
+  uint32_t published_corrections_{0xFFFFFFFF};
 
   binary_sensor::BinarySensor *vbus_present_sensor_{nullptr};
   binary_sensor::BinarySensor *vac1_present_sensor_{nullptr};

@@ -23,6 +23,7 @@ from esphome.const import (
     ICON_FLASH,
     ICON_THERMOMETER,
     STATE_CLASS_MEASUREMENT,
+    STATE_CLASS_TOTAL_INCREASING,
     UNIT_CELSIUS,
     UNIT_VOLT,
 )
@@ -70,6 +71,7 @@ CONF_IBUS_CURRENT = "ibus_current"
 CONF_IBAT_CURRENT = "ibat_current"
 CONF_BATTERY_TEMPERATURE = "battery_temperature"
 CONF_DIE_TEMPERATURE = "die_temperature"
+CONF_REGISTER_CORRECTIONS = "register_corrections"
 
 # Binary sensors
 CONF_VBUS_PRESENT = "vbus_present"
@@ -219,6 +221,15 @@ def _temperature_sensor():
     )
 
 
+def _counter_sensor():
+    return sensor.sensor_schema(
+        accuracy_decimals=0,
+        icon="mdi:counter",
+        state_class=STATE_CLASS_TOTAL_INCREASING,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+    )
+
+
 def _number(cls, unit, min_value, max_value, step):
     return number.number_schema(
         cls,
@@ -364,6 +375,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_IBAT_CURRENT): _current_sensor(),
             cv.Optional(CONF_BATTERY_TEMPERATURE): _temperature_sensor(),
             cv.Optional(CONF_DIE_TEMPERATURE): _temperature_sensor(),
+            # How many times the periodic register check has found a register that did not hold
+            # what the host asked for since boot. Counts in `watch` mode too.
+            cv.Optional(CONF_REGISTER_CORRECTIONS): _counter_sensor(),
             # --- Binary sensors ---
             cv.Optional(CONF_VBUS_PRESENT): binary_sensor.binary_sensor_schema(
                 device_class=DEVICE_CLASS_POWER
@@ -523,6 +537,7 @@ SENSOR_SETTERS = {
     CONF_IBAT_CURRENT: "set_ibat_current_sensor",
     CONF_BATTERY_TEMPERATURE: "set_battery_temperature_sensor",
     CONF_DIE_TEMPERATURE: "set_die_temperature_sensor",
+    CONF_REGISTER_CORRECTIONS: "set_register_corrections_sensor",
 }
 
 BINARY_SENSOR_SETTERS = {

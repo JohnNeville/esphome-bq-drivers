@@ -639,6 +639,12 @@ void BQ25798Component::reconcile_() {
 
   if (changed)
     this->publish_control_states_();
+
+  // Report the running count, but only when it moves (and once at boot so the entity has a value).
+  if (this->register_corrections_sensor_ != nullptr && this->corrections_ != this->published_corrections_) {
+    this->published_corrections_ = this->corrections_;
+    this->register_corrections_sensor_->publish_state(static_cast<float>(this->corrections_));
+  }
 }
 
 // ---------------------------------------------------------------------------
