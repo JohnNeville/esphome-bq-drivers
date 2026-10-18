@@ -77,6 +77,24 @@ and the 49-byte block `0x00`..`0x30` was read 2 s later. Both boards gave the sa
 not move the charge voltage limit, but it does silently turn off the ADC, the thermistor bypass and
 the battery-discharge current sensing, and restores a 1 A charge current.
 
+## EN_HIZ latch on a slowly rising or weak source (bench, 2026-10-18)
+
+Measured with a programmable supply on a hub's solar input (SunSprout bench tests):
+
+- Stepping the supply **up** from 3 V in 0.5 V steps, the charger set `EN_HIZ` at 4.0 V (power good false,
+  `VBUS_STAT` = 8, "not qualified adapter") and it **stayed set through 12 V with 0.8 A available**. Switching the
+  supply on directly at 12 V did the same. Nothing cleared it within about 2.5 minutes, so the charger's own
+  retry (the datasheet says 7 minutes) did not help in that time.
+- A host write of `EN_HIZ = 0` cleared it at once, power good returned and the input worked.
+- A panel rising slowly at dawn never produces an unplug and plug-in, which is the other thing that clears the
+  bit, so it can sit latched while the light improves.
+- On a real panel in weak morning light the same write cleared it, but the charger set it again within 3.5 s,
+  because the start-up check still failed. Clearing it on a timer (`register_check: enforce` does so every 30 s)
+  retries until the panel can pass.
+- Entering HIZ also stops MPPT from updating `VINDPM`, so a stale high `VINDPM` stays in place while latched.
+- Thresholds with the supply stepping up and down: input present and power good down to 3.5 V, lost at 3.0 V,
+  back at 3.5 V going up.
+
 ## Register table
 
 Only fields the driver reads or writes, or that could surprise it, are listed. Registers whose every
