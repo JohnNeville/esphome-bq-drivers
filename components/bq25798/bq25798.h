@@ -413,6 +413,20 @@ class BQ25798HizSwitch : public BQ25798Child<switch_::Switch> {
 
 class BQ25798MpptSwitch : public BQ25798Child<switch_::Switch> {
  public:
+  // Apply restore_mode once the charger has started. ESPHome only restores a switch's state for components that
+  // ask for it, so without this the restore_mode in the YAML does nothing. The charger clears EN_MPPT itself
+  // whenever VBUS goes away, so the register cannot be the source of this switch's state: the choice is what the
+  // switch was last set to, and the driver re-asserts it.
+  void setup() override {
+    auto initial = this->get_initial_state_with_restore_mode();
+    if (!initial.has_value())
+      return;
+    if (*initial)
+      this->turn_on();
+    else
+      this->turn_off();
+  }
+
   void write_state(bool state) override {
     if (this->parent_->enable_mppt(state))
       this->publish_state(state);

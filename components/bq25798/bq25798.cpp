@@ -715,9 +715,11 @@ void BQ25798Component::publish_control_states_() {
       this->acdrv2_switch_->publish_state((ctrl4 & 0x80) != 0);
   }
   if (this->read_u8_(REG15_MPPT, mppt)) {
-    this->mppt_requested_ = (mppt & 0x01) != 0;
-    if (this->mppt_switch_ != nullptr)
-      this->mppt_switch_->publish_state(this->mppt_requested_);
+    // EN_MPPT is not read back into the switch or into mppt_requested_. The charger clears it by itself whenever
+    // VBUS goes away (every night on solar), so the register says "off" at dawn and after a reboot in the dark.
+    // Publishing that would overwrite the saved choice, the switch would restore itself to off, and the board
+    // would start the panel without MPPT: the charger then drags the panel down to VINDPM, fails its start-up
+    // check and latches EN_HIZ. The switch holds what was asked for, and reconcile_ and update() re-assert it.
     if (this->voc_ratio_select_ != nullptr) {
       const auto &options = this->voc_ratio_select_->traits.get_options();
       size_t index = (mppt >> 5) & 0x07;
