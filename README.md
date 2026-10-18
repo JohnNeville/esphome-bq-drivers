@@ -94,6 +94,22 @@ read from the `PROG` pin at power-on. The component disables the watchdog by def
 case the component kicks it on every `update()` and reapplies its configuration if it ever
 does expire.
 
+**Register check.** Every 5 s the component reads registers `0x00` to `0x30` in one 49-byte
+transaction (about 9.5 ms on a 50 kHz bus) and compares the control bits with what the host last
+asked for. The charger changes some bits itself (`EN_HIZ` after a failed poor-source test,
+`EN_MPPT` when VBUS drops) and none of that raises `/INT`, so this is the only way to see it.
+`register_check:` chooses what happens on a difference:
+
+| Value | Behaviour |
+|---|---|
+| `watch` (default) | Logs the difference (at most once a minute) and counts it. Writes nothing. |
+| `enforce` | Also writes the value back and reads it to confirm, and clears `EN_HIZ` at most every 30 s. |
+| `off` | No check. |
+
+Which fields are checked, and why, is in
+[`docs/bq25798-register-behaviour.md`](docs/bq25798-register-behaviour.md). Use `watch` first: if
+your board never reports a difference there is nothing for `enforce` to do.
+
 **`max_charge_current` is a real safety control.** The IC will happily source 5 A. In buck
 mode the charge current can exceed the input current, so a board whose `SYS` and `BAT`
 copper is rated below that must set this, not just cap the number entity. The clamp is

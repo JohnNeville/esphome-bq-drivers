@@ -51,6 +51,8 @@ CONF_SHIP_FET_PRESENT = "ship_fet_present"
 CONF_SHIP_FET_ACTION_DELAY = "ship_fet_action_delay"
 CONF_BATTERY_OCP = "battery_ocp"
 CONF_WATCHDOG = "watchdog"
+CONF_REGISTER_CHECK = "register_check"
+REGISTER_CHECK_OPTIONS = {"off": 0, "watch": 1, "enforce": 2}
 CONF_TS_RESISTOR_UPPER = "ts_resistor_upper"
 CONF_TS_RESISTOR_LOWER = "ts_resistor_lower"
 CONF_TS_NOMINAL_RESISTANCE = "ts_nominal_resistance"
@@ -334,6 +336,12 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_WATCHDOG, default="disabled"): cv.one_of(
                 *WATCHDOG_OPTIONS, lower=True
             ),
+            # Every few seconds the charger's control registers are read back and compared with what the
+            # host last asked for. "watch" logs a difference and counts it but changes nothing, "enforce"
+            # also writes the value back, "off" skips the check. See docs/bq25798-register-behaviour.md.
+            cv.Optional(CONF_REGISTER_CHECK, default="watch"): cv.one_of(
+                *REGISTER_CHECK_OPTIONS, lower=True
+            ),
             cv.Optional(CONF_TS_RESISTOR_UPPER): cv.resistance,
             cv.Optional(CONF_TS_RESISTOR_LOWER): cv.resistance,
             cv.Optional(CONF_TS_NOMINAL_RESISTANCE, default="10kOhm"): cv.resistance,
@@ -588,6 +596,7 @@ async def to_code(config):
     if CONF_DEFAULT_CHARGE_CURRENT in config:
         cg.add(var.set_default_charge_current(config[CONF_DEFAULT_CHARGE_CURRENT]))
     cg.add(var.set_watchdog(WATCHDOG_OPTIONS[config[CONF_WATCHDOG]]))
+    cg.add(var.set_register_check(REGISTER_CHECK_OPTIONS[config[CONF_REGISTER_CHECK]]))
     cg.add(var.set_ts_ignore(config[CONF_TS_IGNORE]))
     cg.add(var.set_auto_input_detection(config[CONF_AUTO_INPUT_DETECTION]))
 
