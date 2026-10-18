@@ -94,6 +94,13 @@ Measured with a programmable supply on a hub's solar input (SunSprout bench test
 - Entering HIZ also stops MPPT from updating `VINDPM`, so a stale high `VINDPM` stays in place while latched.
 - Thresholds with the supply stepping up and down: input present and power good down to 3.5 V, lost at 3.0 V,
   back at 3.5 V going up.
+- Datasheet references (TI BQ25798, SLUSDV2C, printed page numbers): poor-source qualification, the 7 minute
+  retry, the host's `EN_HIZ = 0` retry and the plug-in clear are in Section 7.3.4.2, p.27; the poor-source test
+  current is "typical 10 mA" there and 7 / 12 / 20 mA (min / typ / max) in Section 6.5, p.10, with the voltage
+  threshold 3.3 / 3.4 / 3.5 V; default `VINDPM` from the unloaded VBUS is Section 7.3.4.4, p.27; `EN_MPPT`
+  forced to 0 below the VBUS present threshold is Section 7.3.6.3, p.34; HIZ state is Section 7.3.6.5, p.35.
+- Bench result with a current-limited 12.8 V source: it started at 20 mA and above with MPPT off and 15 mA and above
+  with MPPT on, one trial per case.
 
 ## Register table
 
