@@ -59,6 +59,8 @@ bq25798:
     name: "Battery Temperature"
   die_temperature:
     name: "Charger Die Temperature"
+  register_corrections:
+    name: "Register Corrections"
 
   vbus_present:
     name: "VBUS Present"

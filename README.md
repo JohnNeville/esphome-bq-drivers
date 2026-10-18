@@ -106,6 +106,9 @@ asked for. The charger changes some bits itself (`EN_HIZ` after a failed poor-so
 | `enforce` | Also writes the value back and reads it to confirm, and clears `EN_HIZ` at most every 30 s. |
 | `off` | No check. |
 
+The optional `register_corrections:` sensor counts how many times the check has found a difference since
+boot, in `watch` mode too, so it can be graphed in Home Assistant.
+
 Which fields are checked, and why, is in
 [`docs/bq25798-register-behaviour.md`](docs/bq25798-register-behaviour.md). Use `watch` first: if
 your board never reports a difference there is nothing for `enforce` to do.
