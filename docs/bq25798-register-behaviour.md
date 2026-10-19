@@ -83,8 +83,10 @@ Measured with a programmable supply on a hub's solar input (SunSprout bench test
 
 - Stepping the supply **up** from 3 V in 0.5 V steps, the charger set `EN_HIZ` at 4.0 V (power good false,
   `VBUS_STAT` = 8, "not qualified adapter") and it **stayed set through 12 V with 0.8 A available**. Switching the
-  supply on directly at 12 V did the same. Nothing cleared it within about 2.5 minutes, so the charger's own
-  retry (the datasheet says 7 minutes) did not help in that time.
+  supply on directly at 12 V did the same. With no host action it stayed set for about 9 to 10 minutes and then
+  cleared by itself, with power good returning (two runs: after a slow ramp, and after a 5 mA source that was
+  then given a healthy supply). That is the charger's own retry; the datasheet says 7 minutes, and the samples were
+  about 29 s apart. A short watch (2.5 minutes) will therefore see it stay latched.
 - A host write of `EN_HIZ = 0` cleared it at once, power good returned and the input worked.
 - A panel rising slowly at dawn never produces an unplug and plug-in, which is the other thing that clears the
   bit, so it can sit latched while the light improves.
