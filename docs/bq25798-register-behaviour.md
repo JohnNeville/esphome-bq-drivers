@@ -48,6 +48,8 @@ never write).
    a failed poor-source test and by `IBUS_OCP`. The host can clear it at any time.
 4. **`EN_MPPT` self-clears** when VBUS falls below the present threshold. `EN_ICO`,
    `FORCE_VINDPM_DET` and `EN_MPPT` are mutually exclusive.
+   The driver's enforce mode therefore only re-asserts `EN_MPPT` while VBUS is present and `EN_HIZ` is clear;
+   otherwise it would rewrite the bit every 5 s overnight and count each write as a correction.
 5. **`DIS_ACDRV` is reset when VAC falls below the present threshold**, and `EN_ACDRV1/2` lock at 0
    if no ACFET-RBFET pair is detected at power-on.
 6. **No INT for host writes or silent charger changes.** The INT pin pulses on *status* edges (below).

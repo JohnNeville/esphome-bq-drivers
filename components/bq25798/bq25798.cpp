@@ -620,7 +620,9 @@ void BQ25798Component::reconcile_() {
   changed |= this->correct_bits_("EN_IINDPM", REG14_CHG_CTRL5, 0x04, 0x04, r[REG14_CHG_CTRL5]);
   changed |= this->correct_bits_("SFET_PRESENT", REG14_CHG_CTRL5, 0x80, this->ship_fet_present_ ? 0x80 : 0x00,
                                  r[REG14_CHG_CTRL5]);
-  if (this->mppt_requested_)
+  // The charger holds EN_MPPT at 0 whenever VBUS is below its present threshold, and it cannot be set while EN_HIZ is 1
+  // (datasheet 7.3.6.3). Without this guard, enforce rewrites it every 5 s all night and counts each one as a correction.
+  if (this->mppt_requested_ && (r[REG1B_STATUS0] & 0x01) != 0 && !hiz_seen)
     changed |= this->correct_bits_("EN_MPPT", REG15_MPPT, 0x01, 0x01, r[REG15_MPPT]);
   if (this->want_voc_pct_ >= 0)
     changed |= this->correct_bits_("VOC_PCT", REG15_MPPT, 0xE0, static_cast<uint8_t>(this->want_voc_pct_ << 5),
