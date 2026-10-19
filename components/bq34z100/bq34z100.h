@@ -238,6 +238,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
 
   bool unseal_();
   bool seal_();
+  void retry_seal_(uint8_t attempts_left);
   bool read_flash_block_(uint8_t subclass, uint8_t block, uint8_t *data);
   bool write_flash_block_(uint8_t subclass, uint8_t block, const uint8_t *data);
   bool update_flash_bytes_(uint8_t subclass, uint8_t offset, const uint8_t *value, uint8_t length);
