@@ -13,8 +13,10 @@ static const char *const TAG = "bq34z100";
 static const uint8_t FLASH_BLOCK_SIZE = 32;
 // The datasheet asks for a settling delay after each data flash write.
 static const uint32_t FLASH_WRITE_DELAY_MS = 200;
-static const uint32_t SEAL_RETRY_MS = 500;
-static const uint8_t SEAL_RETRIES = 20;
+// Seal retries start at 500 ms and double up to 4 s: 10 attempts, about 30 s in all.
+static const uint32_t SEAL_RETRY_FIRST_MS = 500;
+static const uint32_t SEAL_RETRY_MAX_MS = 4000;
+static const uint8_t SEAL_RETRIES = 10;
 static const uint32_t FLASH_SETUP_DELAY_MS = 5;
 // 65535 means "not computable yet" for both of the time-remaining commands.
 static const uint16_t TIME_UNKNOWN = 0xFFFF;
@@ -133,12 +135,14 @@ bool BQ34Z100Component::unseal_() {
 bool BQ34Z100Component::seal_() {
   if (this->control_command_(CTRL_SEALED))
     return true;
-  ESP_LOGW(TAG, "Gauge refused the seal command; retrying every %u ms", (unsigned) SEAL_RETRY_MS);
-  this->set_timeout("seal_retry", SEAL_RETRY_MS, [this]() { this->retry_seal_(SEAL_RETRIES); });
+  ESP_LOGW(TAG, "Gauge refused the seal command; retrying with growing gaps starting at %u ms",
+           (unsigned) SEAL_RETRY_FIRST_MS);
+  this->set_timeout("seal_retry", SEAL_RETRY_FIRST_MS,
+                    [this]() { this->retry_seal_(SEAL_RETRIES, SEAL_RETRY_FIRST_MS); });
   return false;
 }
 
-void BQ34Z100Component::retry_seal_(uint8_t attempts_left) {
+void BQ34Z100Component::retry_seal_(uint8_t attempts_left, uint32_t gap_ms) {
   if (this->control_command_(CTRL_SEALED)) {
     ESP_LOGI(TAG, "Gauge sealed");
     return;
@@ -147,7 +151,8 @@ void BQ34Z100Component::retry_seal_(uint8_t attempts_left) {
     ESP_LOGE(TAG, "Gauge could not be sealed; it stays unsealed until the next seal succeeds");
     return;
   }
-  this->set_timeout("seal_retry", SEAL_RETRY_MS, [this, attempts_left]() { this->retry_seal_(attempts_left - 1); });
+  const uint32_t next_gap = gap_ms * 2 > SEAL_RETRY_MAX_MS ? SEAL_RETRY_MAX_MS : gap_ms * 2;
+  this->set_timeout("seal_retry", next_gap, [this, attempts_left, next_gap]() { this->retry_seal_(attempts_left - 1, next_gap); });
 }
 
 bool BQ34Z100Component::read_flash_block_(uint8_t subclass, uint8_t block, uint8_t *data) {
