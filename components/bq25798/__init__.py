@@ -84,6 +84,8 @@ CONF_THERMAL_REGULATION = "thermal_regulation"
 CONF_POOR_SOURCE = "poor_source"
 CONF_WATCHDOG_EXPIRED = "watchdog_expired"
 CONF_TS_STATUS = "ts_status"
+CONF_LAST_CORRECTION = "last_correction"
+CONF_VSYS_REGULATION = "vsys_regulation"
 
 # Text sensors
 CONF_CHARGE_STATUS = "charge_status"
@@ -411,11 +413,21 @@ CONFIG_SCHEMA = cv.All(
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 icon="mdi:solar-power-variant-outline",
             ),
+            # On while the battery is below VSYSMIN (REG0x1E VSYS_STAT). The charger cannot run MPPT then.
+            cv.Optional(CONF_VSYS_REGULATION): binary_sensor.binary_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:battery-alert-variant-outline",
+            ),
             cv.Optional(CONF_WATCHDOG_EXPIRED): binary_sensor.binary_sensor_schema(
                 device_class="problem",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             # --- Text sensors ---
+            # The last register the check found changed: which one, what it read and what was wanted.
+            cv.Optional(CONF_LAST_CORRECTION): text_sensor.text_sensor_schema(
+                icon="mdi:wrench-clock",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_TS_STATUS): text_sensor.text_sensor_schema(
                 icon="mdi:thermometer-alert",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -568,6 +580,7 @@ BINARY_SENSOR_SETTERS = {
     CONF_THERMAL_REGULATION: "set_thermal_regulation_sensor",
     CONF_POOR_SOURCE: "set_poor_source_sensor",
     CONF_WATCHDOG_EXPIRED: "set_watchdog_expired_sensor",
+    CONF_VSYS_REGULATION: "set_vsys_regulation_sensor",
 }
 
 TEXT_SENSOR_SETTERS = {
@@ -576,6 +589,7 @@ TEXT_SENSOR_SETTERS = {
     CONF_ACTIVE_INPUT: "set_active_input_text_sensor",
     CONF_CHARGER_FAULT: "set_charger_fault_text_sensor",
     CONF_TS_STATUS: "set_ts_status_text_sensor",
+    CONF_LAST_CORRECTION: "set_last_correction_text_sensor",
 }
 
 SWITCH_SETTERS = {

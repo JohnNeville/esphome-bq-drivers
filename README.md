@@ -296,12 +296,22 @@ and diagnostic.
       name: "Watchdog Expired"
     ts_status:
       name: "TS Status"
+    vsys_regulation:
+      name: "In VSYSMIN Regulation"
+    last_correction:
+      name: "Last Register Correction"
 ```
 
 - `poor_source` is on when the charger's poor-source test has failed (REG0x22 POORSRC_FLAG). The
   hardware clears that flag when it is read, so the entity stays on for two minutes after the
   charger last raised it. A weak panel at dawn shows up here while `charger_fault` still says OK.
 - `watchdog_expired` works the same way for the watchdog flag.
+- `vsys_regulation` is on while the battery is below `VSYSMIN` (REG0x1E `VSYS_STAT`). The charger cannot run
+  MPPT then, and a LiFePO4 pack sits below the default 3.5 V `VSYSMIN` for most of its range.
+- `last_correction` says which register the periodic check last found changed, what it read, what was wanted
+  and whether the rewrite took, with a count per register since boot, for example
+  `EN_MPPT x7: REG0x15&0x01 read 0x00, wanted 0x01, write did not take`. It works in `watch` mode too, where
+  nothing is rewritten. `register_corrections` counts all of them together.
 - `ts_status` is `Normal`, `Cool`, `Cold`, `Warm` or `Hot`, from REG0x1F. It reads `Ignored` when
   `ts_ignore` is set, because the charger no longer acts on the pin then. `Cold` with a thermistor
   that is not fitted is the usual reason charging refuses to start.

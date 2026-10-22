@@ -48,8 +48,11 @@ never write).
    a failed poor-source test and by `IBUS_OCP`. The host can clear it at any time.
 4. **`EN_MPPT` self-clears** when VBUS falls below the present threshold. `EN_ICO`,
    `FORCE_VINDPM_DET` and `EN_MPPT` are mutually exclusive.
-   The driver's enforce mode therefore only re-asserts `EN_MPPT` while VBUS is present and `EN_HIZ` is clear;
-   otherwise it would rewrite the bit every 5 s overnight and count each write as a correction.
+   The charger also will not hold `EN_MPPT` while the battery is below `VSYSMIN` (`VSYS_STAT`, REG0x1E bit 4;
+   datasheet 7.3.6.3). The driver's enforce mode therefore only re-asserts `EN_MPPT` while VBUS is present,
+   `EN_HIZ` is clear and `VSYS_STAT` is clear; otherwise it would rewrite the bit every 5 s and count each write
+   as a correction (it did, 2026-10-22, on a LiFePO4 pack at 3.29 V against the default 3.5 V `VSYSMIN`). The
+   `vsys_regulation` entity shows the condition, and one warning is logged when MPPT is wanted but blocked by it.
 5. **`DIS_ACDRV` is reset when VAC falls below the present threshold**, and `EN_ACDRV1/2` lock at 0
    if no ACFET-RBFET pair is detected at power-on.
 6. **No INT for host writes or silent charger changes.** The INT pin pulses on *status* edges (below).

@@ -4,6 +4,9 @@
 #include "esphome/core/automation.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
+#include <map>
+#include <string>
+
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/switch/switch.h"
@@ -166,11 +169,13 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_thermal_regulation_sensor(binary_sensor::BinarySensor *s) { thermal_regulation_sensor_ = s; }
   void set_poor_source_sensor(binary_sensor::BinarySensor *s) { poor_source_sensor_ = s; }
   void set_watchdog_expired_sensor(binary_sensor::BinarySensor *s) { watchdog_expired_sensor_ = s; }
+  void set_vsys_regulation_sensor(binary_sensor::BinarySensor *s) { vsys_regulation_sensor_ = s; }
 
   void set_charge_status_text_sensor(text_sensor::TextSensor *s) { charge_status_text_sensor_ = s; }
   void set_input_source_text_sensor(text_sensor::TextSensor *s) { input_source_text_sensor_ = s; }
   void set_charger_fault_text_sensor(text_sensor::TextSensor *s) { charger_fault_text_sensor_ = s; }
   void set_ts_status_text_sensor(text_sensor::TextSensor *s) { ts_status_text_sensor_ = s; }
+  void set_last_correction_text_sensor(text_sensor::TextSensor *s) { last_correction_text_sensor_ = s; }
 
   void set_charging_switch(BQ25798ChargingSwitch *s) { charging_switch_ = s; }
   void set_hiz_switch(BQ25798HizSwitch *s) { hiz_switch_ = s; }
@@ -307,6 +312,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // last asked for. See docs/bq25798-register-behaviour.md for which fields are enforced.
   void reconcile_();
   void note_flags_(const uint8_t *f);
+  void note_correction_(const char *name, const char *detail);
   bool correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen);
 
   void publish_voltage_(sensor::Sensor *s, uint8_t reg);
@@ -334,11 +340,13 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   binary_sensor::BinarySensor *thermal_regulation_sensor_{nullptr};
   binary_sensor::BinarySensor *poor_source_sensor_{nullptr};
   binary_sensor::BinarySensor *watchdog_expired_sensor_{nullptr};
+  binary_sensor::BinarySensor *vsys_regulation_sensor_{nullptr};
 
   text_sensor::TextSensor *charge_status_text_sensor_{nullptr};
   text_sensor::TextSensor *input_source_text_sensor_{nullptr};
   text_sensor::TextSensor *charger_fault_text_sensor_{nullptr};
   text_sensor::TextSensor *ts_status_text_sensor_{nullptr};
+  text_sensor::TextSensor *last_correction_text_sensor_{nullptr};
 
   BQ25798ChargingSwitch *charging_switch_{nullptr};
   BQ25798HizSwitch *hiz_switch_{nullptr};
@@ -397,6 +405,9 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   uint32_t last_hiz_clear_{0};
   uint32_t corrections_{0};
   uint32_t last_drift_log_{0};
+  // How many times each register has been found changed since boot, shown with the last correction.
+  std::map<std::string, uint32_t> correction_tally_;
+  bool mppt_blocked_logged_{false};
   // The flag registers clear on read, so remember when POORSRC and WD were last seen.
   uint32_t last_poor_source_{0};
   uint32_t last_watchdog_flag_{0};
