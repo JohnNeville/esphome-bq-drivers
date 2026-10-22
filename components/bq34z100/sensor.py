@@ -93,6 +93,8 @@ CONF_OVER_TEMPERATURE = "over_temperature"
 
 # Text sensor
 CONF_STATUS = "status"
+CONF_CONFIG_STATUS = "config_status"
+CONF_CONFIG_PROBLEM = "config_problem"
 
 # Buttons
 CONF_CC_OFFSET_CALIBRATION = "cc_offset_calibration"
@@ -272,6 +274,15 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:battery-heart-variant",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            # Says whether the gauge's data flash matches what the YAML declares.
+            cv.Optional(CONF_CONFIG_STATUS): text_sensor.text_sensor_schema(
+                icon="mdi:clipboard-check-outline",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            cv.Optional(CONF_CONFIG_PROBLEM): binary_sensor.binary_sensor_schema(
+                device_class="problem",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             # --- Buttons ---
             cv.Optional(CONF_CC_OFFSET_CALIBRATION): button.button_schema(
                 BQ34Z100CcOffsetButton,
@@ -392,6 +403,13 @@ async def to_code(config):
     if CONF_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_STATUS])
         cg.add(var.set_status_text_sensor(ts))
+
+    if CONF_CONFIG_STATUS in config:
+        ts = await text_sensor.new_text_sensor(config[CONF_CONFIG_STATUS])
+        cg.add(var.set_config_status_text_sensor(ts))
+    if CONF_CONFIG_PROBLEM in config:
+        bs = await binary_sensor.new_binary_sensor(config[CONF_CONFIG_PROBLEM])
+        cg.add(var.set_config_problem_sensor(bs))
 
     for key, setter in BUTTON_SETTERS.items():
         if key in config:

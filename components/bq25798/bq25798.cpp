@@ -13,6 +13,8 @@ static const uint32_t RECONCILE_INTERVAL_MS = 5000;
 // The charger sets EN_HIZ when its poor-source test fails and retries by itself every 7 minutes. The
 // host can clear it sooner, but not more often than this.
 static const uint32_t HIZ_CLEAR_MIN_GAP_MS = 30000;
+// The POORSRC and WD flags clear on read, so the entities stay on this long after the charger last raised them.
+static const uint32_t FLAG_HOLD_MS = 120000;
 // In watch mode the same drift is reported at most this often.
 static const uint32_t DRIFT_LOG_GAP_MS = 60000;
 
@@ -484,7 +486,25 @@ bool BQ25798Component::clear_interrupts() {
   }
   ESP_LOGD(TAG, "Cleared charger flags (0x%02X 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X)",
            flags[0], flags[1], flags[2], flags[3], flags[4], flags[5]);
+  this->note_flags_(flags);
   return true;
+}
+
+void BQ25798Component::note_flags_(const uint8_t *f) {
+  const uint32_t now = millis();
+  if (f[0] & 0x10) {  // POORSRC_FLAG
+    this->last_poor_source_ = now;
+    this->seen_poor_source_ = true;
+  }
+  if (f[0] & 0x20) {  // WD_FLAG
+    this->last_watchdog_flag_ = now;
+    this->seen_watchdog_flag_ = true;
+  }
+  if (this->poor_source_sensor_ != nullptr)
+    this->poor_source_sensor_->publish_state(this->seen_poor_source_ && now - this->last_poor_source_ < FLAG_HOLD_MS);
+  if (this->watchdog_expired_sensor_ != nullptr)
+    this->watchdog_expired_sensor_->publish_state(this->seen_watchdog_flag_ &&
+                                                  now - this->last_watchdog_flag_ < FLAG_HOLD_MS);
 }
 
 void BQ25798Component::on_shutdown() {
@@ -537,6 +557,7 @@ void BQ25798Component::reconcile_() {
     ESP_LOGI(TAG, "Charger flags: %s%s", (f[0] & 0x20) ? "watchdog expired " : "",
              (f[0] & 0x10) ? "poor source detected" : "");
   }
+  this->note_flags_(f);
   if (f[4] != 0 || f[5] != 0)
     ESP_LOGW(TAG, "Fault flags: 0x%02X 0x%02X", f[4], f[5]);
   else if (f[0] || f[1] || f[2] || f[3])
@@ -893,6 +914,26 @@ void BQ25798Component::update() {
       this->battery_present_sensor_->publish_state((status2 & 0x01) != 0);
     if (this->thermal_regulation_sensor_ != nullptr)
       this->thermal_regulation_sensor_->publish_state((status2 & 0x04) != 0);
+  }
+
+  if (this->ts_status_text_sensor_ != nullptr) {
+    uint8_t status4;
+    if (this->read_u8_(REG1F_STATUS4, status4)) {
+      // REG0x1F bits 3..0: TS_COLD, TS_COOL, TS_WARM, TS_HOT. With TS_IGNORE set the charger no
+      // longer acts on them, and with no thermistor fitted the pin reads cold, so say so.
+      const char *text = "Normal";
+      if (this->ts_ignore_)
+        text = "Ignored";
+      else if (status4 & 0x08)
+        text = "Cold";
+      else if (status4 & 0x04)
+        text = "Cool";
+      else if (status4 & 0x02)
+        text = "Warm";
+      else if (status4 & 0x01)
+        text = "Hot";
+      this->ts_status_text_sensor_->publish_state(text);
+    }
   }
 
   if (this->charger_fault_text_sensor_ != nullptr) {

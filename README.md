@@ -281,6 +281,46 @@ this action also clears them, for a switch from a LiFePO4 to a lithium-ion cell.
 build option it does nothing to the chemistry table, which still needs bqStudio (see
 [Selecting the battery chemistry](#selecting-the-battery-chemistry)).
 
+### Setup and fault diagnostics
+
+These entities exist so a dashboard, or a companion such as a Home Assistant integration, can
+tell a misconfigured or unhappy board from a healthy one without reading logs. All are optional
+and diagnostic.
+
+`bq25798`:
+
+```yaml
+    poor_source:
+      name: "Poor Source Detected"
+    watchdog_expired:
+      name: "Watchdog Expired"
+    ts_status:
+      name: "TS Status"
+```
+
+- `poor_source` is on when the charger's poor-source test has failed (REG0x22 POORSRC_FLAG). The
+  hardware clears that flag when it is read, so the entity stays on for two minutes after the
+  charger last raised it. A weak panel at dawn shows up here while `charger_fault` still says OK.
+- `watchdog_expired` works the same way for the watchdog flag.
+- `ts_status` is `Normal`, `Cool`, `Cold`, `Warm` or `Hot`, from REG0x1F. It reads `Ignored` when
+  `ts_ignore` is set, because the charger no longer acts on the pin then. `Cold` with a thermistor
+  that is not fitted is the usual reason charging refuses to start.
+
+`bq34z100`:
+
+```yaml
+    config_status:
+      name: "Gauge Setup Status"
+    config_problem:
+      name: "Gauge Setup Problem"
+```
+
+- `config_problem` is on when the gauge does not match what the YAML declares, and `config_status`
+  says why: pack parameters declared with `apply_configuration` off, the gauge's design capacity
+  differing from the declared one, or a chemistry ID other than `expected_chem_id`. It uses reads
+  that need no unseal, so it never changes the gauge. The state is worked out at boot and again
+  after each write.
+
 ### Alert pin
 
 The gauge ships with its Alert Configuration register at 0, so the `ALERT` pin never goes

@@ -279,7 +279,41 @@ void BQ34Z100Component::apply_configuration_() {
     this->update_flash_bytes_(SUBCLASS_REGISTERS, OFFSET_ALERT_CONFIGURATION, buf, 2);
   }
 
+  this->applied_ = true;
   this->seal_();
+  this->evaluate_config_();
+}
+
+// Works out whether the gauge matches what the YAML declares, using only reads that need no
+// unseal, and publishes the answer so a dashboard or Home Assistant can raise it as a problem.
+void BQ34Z100Component::evaluate_config_() {
+  if (this->config_status_text_sensor_ == nullptr && this->config_problem_sensor_ == nullptr)
+    return;
+  std::string problems;
+  auto add = [&problems](const std::string &text) {
+    if (!problems.empty())
+      problems += "; ";
+    problems += text;
+  };
+  const bool declared = this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
+                        this->voltage_divider_ > 0 || this->alert_configuration_set_;
+  if (declared && !this->applied_)
+    add("Pack parameters declared but apply_configuration is off, so the gauge flash was not written");
+  if (this->design_capacity_ >= 0) {
+    uint16_t dc;
+    if (this->read_word_(CMD_DESIGN_CAPACITY, dc) && dc != static_cast<uint16_t>(this->design_capacity_))
+      add("Gauge design capacity is " + std::to_string(dc) + " mAh, declared " +
+          std::to_string(this->design_capacity_) + " mAh");
+  }
+  if (this->expected_chem_id_ != 0 && this->chem_id_read_ && this->chem_id_ != this->expected_chem_id_) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Chemistry ID 0x%04X, expected 0x%04X", this->chem_id_, this->expected_chem_id_);
+    add(buf);
+  }
+  if (this->config_problem_sensor_ != nullptr)
+    this->config_problem_sensor_->publish_state(!problems.empty());
+  if (this->config_status_text_sensor_ != nullptr)
+    this->config_status_text_sensor_->publish_state(problems.empty() ? "OK" : problems);
 }
 
 bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax, int external_thermistor) {
@@ -535,6 +569,8 @@ void BQ34Z100Component::setup() {
 
   uint16_t chem_id;
   if (this->control_read_(CTRL_CHEM_ID, chem_id)) {
+    this->chem_id_ = chem_id;
+    this->chem_id_read_ = true;
     ESP_LOGI(TAG, "Gauge chemistry ID: 0x%04X", chem_id);
     if (this->expected_chem_id_ != 0 && chem_id != this->expected_chem_id_) {
       // The chemistry table is not programmable over I2C: it has to be
@@ -559,6 +595,7 @@ void BQ34Z100Component::setup() {
              "to write them.");
   }
 
+  this->evaluate_config_();
   this->setup_ok_ = true;
 }
 

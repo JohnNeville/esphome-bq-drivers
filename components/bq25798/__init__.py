@@ -81,6 +81,9 @@ CONF_POWER_GOOD = "power_good"
 CONF_CHARGING = "charging"
 CONF_BATTERY_PRESENT = "battery_present"
 CONF_THERMAL_REGULATION = "thermal_regulation"
+CONF_POOR_SOURCE = "poor_source"
+CONF_WATCHDOG_EXPIRED = "watchdog_expired"
+CONF_TS_STATUS = "ts_status"
 
 # Text sensors
 CONF_CHARGE_STATUS = "charge_status"
@@ -401,7 +404,22 @@ CONFIG_SCHEMA = cv.All(
                 device_class="heat",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            # Latched flags, held on for a couple of minutes after the charger last raised them
+            # because the hardware clears them on read.
+            cv.Optional(CONF_POOR_SOURCE): binary_sensor.binary_sensor_schema(
+                device_class="problem",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:solar-power-variant-outline",
+            ),
+            cv.Optional(CONF_WATCHDOG_EXPIRED): binary_sensor.binary_sensor_schema(
+                device_class="problem",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             # --- Text sensors ---
+            cv.Optional(CONF_TS_STATUS): text_sensor.text_sensor_schema(
+                icon="mdi:thermometer-alert",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_CHARGE_STATUS): text_sensor.text_sensor_schema(
                 icon="mdi:battery-charging",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -548,6 +566,8 @@ BINARY_SENSOR_SETTERS = {
     CONF_CHARGING: "set_charging_sensor",
     CONF_BATTERY_PRESENT: "set_battery_present_sensor",
     CONF_THERMAL_REGULATION: "set_thermal_regulation_sensor",
+    CONF_POOR_SOURCE: "set_poor_source_sensor",
+    CONF_WATCHDOG_EXPIRED: "set_watchdog_expired_sensor",
 }
 
 TEXT_SENSOR_SETTERS = {
@@ -555,6 +575,7 @@ TEXT_SENSOR_SETTERS = {
     CONF_INPUT_SOURCE: "set_input_source_text_sensor",
     CONF_ACTIVE_INPUT: "set_active_input_text_sensor",
     CONF_CHARGER_FAULT: "set_charger_fault_text_sensor",
+    CONF_TS_STATUS: "set_ts_status_text_sensor",
 }
 
 SWITCH_SETTERS = {

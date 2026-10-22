@@ -175,6 +175,8 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_over_temperature_sensor(binary_sensor::BinarySensor *s) { over_temperature_sensor_ = s; }
 
   void set_status_text_sensor(text_sensor::TextSensor *s) { status_text_sensor_ = s; }
+  void set_config_status_text_sensor(text_sensor::TextSensor *s) { config_status_text_sensor_ = s; }
+  void set_config_problem_sensor(binary_sensor::BinarySensor *s) { config_problem_sensor_ = s; }
 
   void set_cc_offset_button(BQ34Z100CcOffsetButton *b) { cc_offset_button_ = b; }
   void set_board_offset_button(BQ34Z100BoardOffsetButton *b) { board_offset_button_ = b; }
@@ -245,6 +247,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool read_flash_bytes_(uint8_t subclass, uint8_t offset, uint8_t *value, uint8_t length);
 
   void apply_configuration_();
+  void evaluate_config_();
   bool apply_pack_configuration_();
   bool apply_sense_resistor_();
 
@@ -283,6 +286,8 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   binary_sensor::BinarySensor *over_temperature_sensor_{nullptr};
 
   text_sensor::TextSensor *status_text_sensor_{nullptr};
+  text_sensor::TextSensor *config_status_text_sensor_{nullptr};
+  binary_sensor::BinarySensor *config_problem_sensor_{nullptr};
 
   BQ34Z100CcOffsetButton *cc_offset_button_{nullptr};
   BQ34Z100BoardOffsetButton *board_offset_button_{nullptr};
@@ -305,6 +310,9 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   uint16_t alert_configuration_{0};
   bool alert_configuration_set_{false};
   uint16_t expected_chem_id_{0};
+  uint16_t chem_id_{0};
+  bool chem_id_read_{false};
+  bool applied_{false};  // data flash was written (or confirmed) this boot
   bool setup_ok_{false};
 };
 
