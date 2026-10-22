@@ -89,7 +89,11 @@ with a 1 mV or 1 mA LSB.
   `WD_RST` faster than the period.
 - **`EN_ICO`, `FORCE_VINDPM_DET` and `EN_MPPT` are mutually exclusive.** Only one may be
   set at a time; writes to a second are ignored.
-- **`EN_MPPT` self-clears** when VBUS falls below `VBUS_PRESENT`.
+- **`EN_MPPT` self-clears** when VBUS falls below `VBUS_PRESENT`, and cannot be set while `EN_HIZ` is
+  set or while the battery is below `VSYSMIN` (`VSYS_STAT`, `0x1E[4]`, datasheet 7.3.6.3: "The EN_MPPT
+  bit will be reset back to 0 if it is written to 1"). `VSYSMIN` defaults to 3.5 V for a one-cell part,
+  above most of a LiFePO4 pack's working range (about 2.5 to 3.4 V), so with the default MPPT never runs on
+  LiFePO4. Seen on hardware on 2026-10-22: REG0x00 = 0x04 (3.5 V), pack 3.29 V, REG0x1E = 0xD0 (`VSYS_STAT` set).
 - **`SFET_PRESENT` gates `SDRV_CTRL` and `EN_BATOC`.** Both are locked at 0 until it is set,
   and it should only be set when an external ship FET is actually populated on `SDRV`.
   `SDRV_CTRL` (`0x11[2:1]`): 0 idle · 1 shutdown · 2 ship mode · 3 system power reset.
@@ -100,6 +104,14 @@ with a 1 mV or 1 mA LSB.
   `IBAT_OCP_FLAG` bits report the event either way.
 - **`EN_IBAT` must be set** for the ADC to measure battery discharge current in
   battery-only or HIZ mode — exactly when that reading matters.
+- **`IBAT_ADC` (`0x33`) reads charge current in forward mode.** Datasheet 7.5.1.46: "The IBAT ADC reports
+  the battery charging current in forward mode and the battery discharging current in OTG and battery only
+  (HiZ) mode if EN_IBAT bit in REG14[5]=1. The sign bit is 0b for charging current and 1b for
+  discharging current." So the register shows charging current while charging (up to 995 mA seen on the
+  48), and discharge only in battery-only/HiZ mode. In forward mode with the battery supplementing the
+  system (load above what the input supplies) the pack discharges but the register reads 0; seen on the
+  105 on 2026-10-22 with the fuel gauge reading -44 mA at the same time. Use the fuel gauge for current in
+  that state. The reading is not frozen when it is a constant 0.
 - **`EN_EXTILIM` defaults to 1**, so an external `ILIM_HIZ` resistor divider is honoured
   out of the box.
 - **`ACDRV1`/`ACDRV2` lock at 0** if the IC detects no ACFET-RBFET pair at power-on.

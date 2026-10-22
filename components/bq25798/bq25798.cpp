@@ -520,11 +520,26 @@ void BQ25798Component::on_shutdown() {
 // raises /INT, so the control registers are read back on a timer. Which fields are enforced, and why,
 // is in docs/bq25798-register-behaviour.md.
 
+// Remembers what was found changed, so it can be read in Home Assistant and not only in a log that
+// may not be captured. The tally is per register name since boot.
+void BQ25798Component::note_correction_(const char *name, const char *detail) {
+  const uint32_t n = ++this->correction_tally_[name];
+  if (this->last_correction_text_sensor_ == nullptr)
+    return;
+  char text[120];
+  snprintf(text, sizeof(text), "%s x%u: %s", name, static_cast<unsigned>(n), detail);
+  this->last_correction_text_sensor_->publish_state(text);
+}
+
 bool BQ25798Component::correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen) {
   if ((seen & mask) == want)
     return false;
   this->corrections_++;
+  char detail[96];
   if (this->register_check_ < 2) {
+    snprintf(detail, sizeof(detail), "REG0x%02X&0x%02X read 0x%02X, wanted 0x%02X (watch only)", reg, mask, seen & mask,
+             want);
+    this->note_correction_(name, detail);
     if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
       this->last_drift_log_ = millis();
       ESP_LOGW(TAG, "%s (REG0x%02X & 0x%02X) reads 0x%02X, the host asked for 0x%02X (watch only, not changed)", name,
@@ -536,8 +551,12 @@ bool BQ25798Component::correct_bits_(const char *name, uint8_t reg, uint8_t mask
            want);
   this->modify_u8_(reg, mask, want);
   uint8_t now;
-  if (this->read_u8_(reg, now) && (now & mask) != want)
+  const bool stuck = this->read_u8_(reg, now) && (now & mask) != want;
+  if (stuck)
     ESP_LOGE(TAG, "%s did not take: REG0x%02X reads 0x%02X (locked, or another setting overrides it)", name, reg, now);
+  snprintf(detail, sizeof(detail), "REG0x%02X&0x%02X read 0x%02X, wanted 0x%02X%s", reg, mask, seen & mask, want,
+           stuck ? ", write did not take" : ", rewritten");
+  this->note_correction_(name, detail);
   return true;
 }
 
@@ -569,6 +588,12 @@ void BQ25798Component::reconcile_() {
     const uint16_t seen = ((static_cast<uint16_t>(r[REG01_VREG]) << 8) | r[REG01_VREG + 1]) & 0x07FF;
     if (seen != this->want_vreg_code_) {
       this->corrections_++;
+      {
+        char d[80];
+        snprintf(d, sizeof(d), "read %u mV, wanted %u mV%s", seen * 10, this->want_vreg_code_ * 10,
+                 this->register_check_ < 2 ? " (watch only)" : ", rewritten");
+        this->note_correction_("VREG", d);
+      }
       if (this->register_check_ < 2) {
         if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
           this->last_drift_log_ = millis();
@@ -587,6 +612,12 @@ void BQ25798Component::reconcile_() {
     const uint16_t seen = ((static_cast<uint16_t>(r[REG03_ICHG]) << 8) | r[REG03_ICHG + 1]) & 0x01FF;
     if (seen != this->want_ichg_code_) {
       this->corrections_++;
+      {
+        char d[80];
+        snprintf(d, sizeof(d), "read %u mA, wanted %u mA%s", seen * 10, this->want_ichg_code_ * 10,
+                 this->register_check_ < 2 ? " (watch only)" : ", rewritten");
+        this->note_correction_("ICHG", d);
+      }
       if (this->register_check_ < 2) {
         if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
           this->last_drift_log_ = millis();
@@ -615,6 +646,12 @@ void BQ25798Component::reconcile_() {
   if (hiz_seen != (this->want_hiz_ != 0)) {
     if (this->register_check_ < 2) {
       this->corrections_++;
+      {
+        char d[96];
+        snprintf(d, sizeof(d), "EN_HIZ %s, wanted %s, VBUS %s (watch only)", hiz_seen ? "set" : "clear",
+                 this->want_hiz_ ? "set" : "clear", (r[REG1B_STATUS0] & 0x01) ? "present" : "absent");
+        this->note_correction_("EN_HIZ", d);
+      }
       if ((this->last_drift_log_ == 0 || millis() - this->last_drift_log_ >= DRIFT_LOG_GAP_MS)) {
         this->last_drift_log_ = millis();
         ESP_LOGW(TAG, "EN_HIZ is %s but the host asked for %s (status0 0x%02X, VBUS %s; watch only, not changed)",
@@ -627,6 +664,12 @@ void BQ25798Component::reconcile_() {
                hiz_seen ? "set" : "clear", this->want_hiz_ ? "set" : "clear", r[REG1B_STATUS0],
                (r[REG1B_STATUS0] & 0x01) ? "present" : "absent");
       this->corrections_++;
+      {
+        char d[96];
+        snprintf(d, sizeof(d), "EN_HIZ %s, wanted %s, VBUS %s, cleared", hiz_seen ? "set" : "clear",
+                 this->want_hiz_ ? "set" : "clear", (r[REG1B_STATUS0] & 0x01) ? "present" : "absent");
+        this->note_correction_("EN_HIZ", d);
+      }
       this->modify_u8_(REG0F_CHG_CTRL0, 0x04, this->want_hiz_ ? 0x04 : 0x00);
       changed = true;
     }
@@ -641,9 +684,26 @@ void BQ25798Component::reconcile_() {
   changed |= this->correct_bits_("EN_IINDPM", REG14_CHG_CTRL5, 0x04, 0x04, r[REG14_CHG_CTRL5]);
   changed |= this->correct_bits_("SFET_PRESENT", REG14_CHG_CTRL5, 0x80, this->ship_fet_present_ ? 0x80 : 0x00,
                                  r[REG14_CHG_CTRL5]);
-  // The charger holds EN_MPPT at 0 whenever VBUS is below its present threshold, and it cannot be set while EN_HIZ is 1
-  // (datasheet 7.3.6.3). Without this guard, enforce rewrites it every 5 s all night and counts each one as a correction.
-  if (this->mppt_requested_ && (r[REG1B_STATUS0] & 0x01) != 0 && !hiz_seen)
+  // The charger will not hold EN_MPPT in three cases (datasheet 7.3.6.3): VBUS below its present threshold,
+  // EN_HIZ set, and the battery below VSYSMIN (VSYS_STAT, REG0x1E bit 4). Rewriting it then only fails, counts
+  // as a correction every 5 s and, in the last case, goes on for as long as the pack stays low, which for a
+  // LiFePO4 pack against the 3.5 V default VSYSMIN is always.
+  const bool vsys_regulation = (r[REG1E_STATUS3] & 0x10) != 0;
+  if (this->vsys_regulation_sensor_ != nullptr)
+    this->vsys_regulation_sensor_->publish_state(vsys_regulation);
+  const bool mppt_possible = (r[REG1B_STATUS0] & 0x01) != 0 && !hiz_seen;
+  if (this->mppt_requested_ && mppt_possible && vsys_regulation) {
+    if (!this->mppt_blocked_logged_) {
+      this->mppt_blocked_logged_ = true;
+      ESP_LOGW(TAG,
+               "MPPT is on but the charger cannot run it: the battery is below VSYSMIN (VSYS_STAT set, VSYSMIN %.2f V). "
+               "Lower VSYSMIN below the pack's working range to get MPPT",
+               ((r[REG00_VSYSMIN] & 0x3F) * VSYSMIN_STEP_MV + VSYSMIN_OFFSET_MV) / 1000.0f);
+    }
+  } else {
+    this->mppt_blocked_logged_ = false;
+  }
+  if (this->mppt_requested_ && mppt_possible && !vsys_regulation)
     changed |= this->correct_bits_("EN_MPPT", REG15_MPPT, 0x01, 0x01, r[REG15_MPPT]);
   if (this->want_voc_pct_ >= 0)
     changed |= this->correct_bits_("VOC_PCT", REG15_MPPT, 0xE0, static_cast<uint8_t>(this->want_voc_pct_ << 5),
@@ -806,9 +866,13 @@ void BQ25798Component::update() {
 
   // MPPT clears itself whenever VBUS drops below the present threshold, so
   // a configured-on MPPT has to be re-asserted once the input returns.
+  // It also stays at 0 while EN_HIZ is set or the battery is below VSYSMIN (datasheet 7.3.6.3), so only
+  // re-assert it when none of those holds, as reconcile_ does.
   if (this->mppt_requested_) {
-    uint8_t mppt;
-    if (this->read_u8_(REG15_MPPT, mppt) && (mppt & 0x01) == 0) {
+    uint8_t mppt, st0, st3, ctrl0;
+    if (this->read_u8_(REG15_MPPT, mppt) && (mppt & 0x01) == 0 && this->read_u8_(REG1B_STATUS0, st0) &&
+        this->read_u8_(REG1E_STATUS3, st3) && this->read_u8_(REG0F_CHG_CTRL0, ctrl0) && (st0 & 0x01) != 0 &&
+        (ctrl0 & 0x04) == 0 && (st3 & 0x10) == 0) {
       ESP_LOGD(TAG, "MPPT was cleared by the charger; re-enabling");
       this->modify_u8_(REG15_MPPT, 0x01, 0x01);
     }

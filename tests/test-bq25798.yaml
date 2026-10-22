@@ -80,6 +80,8 @@ bq25798:
     name: "Poor Source Detected"
   watchdog_expired:
     name: "Watchdog Expired"
+  vsys_regulation:
+    name: "In VSYSMIN Regulation"
 
   charge_status:
     name: "Charge Status"
@@ -89,6 +91,8 @@ bq25798:
     name: "Charger Fault"
   ts_status:
     name: "TS Status"
+  last_correction:
+    name: "Last Register Correction"
   active_input:
     name: "Active Input"
 
