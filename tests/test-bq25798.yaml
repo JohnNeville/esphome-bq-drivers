@@ -76,6 +76,10 @@ bq25798:
     name: "Battery Present"
   thermal_regulation:
     name: "Thermal Regulation"
+  poor_source:
+    name: "Poor Source Detected"
+  watchdog_expired:
+    name: "Watchdog Expired"
 
   charge_status:
     name: "Charge Status"
@@ -83,6 +87,8 @@ bq25798:
     name: "Input Source"
   charger_fault:
     name: "Charger Fault"
+  ts_status:
+    name: "TS Status"
   active_input:
     name: "Active Input"
 

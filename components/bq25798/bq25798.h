@@ -164,10 +164,13 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_charging_sensor(binary_sensor::BinarySensor *s) { charging_sensor_ = s; }
   void set_battery_present_sensor(binary_sensor::BinarySensor *s) { battery_present_sensor_ = s; }
   void set_thermal_regulation_sensor(binary_sensor::BinarySensor *s) { thermal_regulation_sensor_ = s; }
+  void set_poor_source_sensor(binary_sensor::BinarySensor *s) { poor_source_sensor_ = s; }
+  void set_watchdog_expired_sensor(binary_sensor::BinarySensor *s) { watchdog_expired_sensor_ = s; }
 
   void set_charge_status_text_sensor(text_sensor::TextSensor *s) { charge_status_text_sensor_ = s; }
   void set_input_source_text_sensor(text_sensor::TextSensor *s) { input_source_text_sensor_ = s; }
   void set_charger_fault_text_sensor(text_sensor::TextSensor *s) { charger_fault_text_sensor_ = s; }
+  void set_ts_status_text_sensor(text_sensor::TextSensor *s) { ts_status_text_sensor_ = s; }
 
   void set_charging_switch(BQ25798ChargingSwitch *s) { charging_switch_ = s; }
   void set_hiz_switch(BQ25798HizSwitch *s) { hiz_switch_ = s; }
@@ -303,6 +306,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // One burst read of the whole control, status and ADC-control block, compared with what the host
   // last asked for. See docs/bq25798-register-behaviour.md for which fields are enforced.
   void reconcile_();
+  void note_flags_(const uint8_t *f);
   bool correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen);
 
   void publish_voltage_(sensor::Sensor *s, uint8_t reg);
@@ -328,10 +332,13 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   binary_sensor::BinarySensor *charging_sensor_{nullptr};
   binary_sensor::BinarySensor *battery_present_sensor_{nullptr};
   binary_sensor::BinarySensor *thermal_regulation_sensor_{nullptr};
+  binary_sensor::BinarySensor *poor_source_sensor_{nullptr};
+  binary_sensor::BinarySensor *watchdog_expired_sensor_{nullptr};
 
   text_sensor::TextSensor *charge_status_text_sensor_{nullptr};
   text_sensor::TextSensor *input_source_text_sensor_{nullptr};
   text_sensor::TextSensor *charger_fault_text_sensor_{nullptr};
+  text_sensor::TextSensor *ts_status_text_sensor_{nullptr};
 
   BQ25798ChargingSwitch *charging_switch_{nullptr};
   BQ25798HizSwitch *hiz_switch_{nullptr};
@@ -390,6 +397,11 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   uint32_t last_hiz_clear_{0};
   uint32_t corrections_{0};
   uint32_t last_drift_log_{0};
+  // The flag registers clear on read, so remember when POORSRC and WD were last seen.
+  uint32_t last_poor_source_{0};
+  uint32_t last_watchdog_flag_{0};
+  bool seen_poor_source_{false};
+  bool seen_watchdog_flag_{false};
   uint8_t register_check_{1};
 };
 

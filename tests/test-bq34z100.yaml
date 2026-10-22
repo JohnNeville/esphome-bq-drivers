@@ -90,6 +90,10 @@ sensor:
 
     status:
       name: "Gauge Status"
+    config_status:
+      name: "Gauge Setup Status"
+    config_problem:
+      name: "Gauge Setup Problem"
 
     cc_offset_calibration:
       name: "Calibrate CC Offset"
