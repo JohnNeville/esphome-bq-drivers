@@ -285,7 +285,8 @@ void BQ25798Component::input_selection_step_() {
     return;
   }
   if (vbus_present)
-    ESP_LOGW(TAG, "VBUS still present after %u ms; turning the input drivers back on anyway", INPUT_VBUS_WAIT_MS);
+    ESP_LOGW(TAG, "VBUS still present after %u ms; turning the input drivers back on anyway",
+             static_cast<unsigned>(INPUT_VBUS_WAIT_MS));
   this->modify_u8_(REG12_CHG_CTRL3, 0x80, 0x00);
   // Clearing DIS_ACDRV leaves both enable bits at 0, so say which port may turn on.
   this->read_u8_(REG1B_STATUS0, status0);
@@ -560,8 +561,10 @@ void BQ25798Component::reconcile_() {
   this->note_flags_(f);
   if (f[4] != 0 || f[5] != 0)
     ESP_LOGW(TAG, "Fault flags: 0x%02X 0x%02X", f[4], f[5]);
-  else if (f[0] || f[1] || f[2] || f[3])
+  else if (f[0] || f[1] || f[2] || f[3]) {
+    // Braces: with verbose logging compiled out ESP_LOGV is empty, and a bare `;` body warns (-Wempty-body).
     ESP_LOGV(TAG, "Charger flags: 0x%02X 0x%02X 0x%02X 0x%02X", f[0], f[1], f[2], f[3]);
+  }
 
   bool changed = false;
   // Safety-relevant first.
