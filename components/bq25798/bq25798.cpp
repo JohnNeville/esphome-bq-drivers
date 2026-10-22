@@ -964,7 +964,11 @@ void BQ25798Component::update() {
         case 0x5: text = "Unknown adapter (3 A)"; break;
         case 0x6: text = "Non-standard adapter"; break;
         case 0x7: text = "OTG mode"; break;
-        case 0x8: text = "Unqualified adapter"; break;
+        case 0x8:
+          // With the D+/D- pins unconnected (or auto_input_detection off) the charger never classifies the source and
+          // reports 8 for any input, including a solar panel that is charging normally.
+          text = this->auto_input_detection_ ? "Unqualified adapter" : "Not classified (no D+/D- detection)";
+          break;
         case 0xB: text = "Powered directly from VBUS"; break;
         case 0xC: text = "Backup mode"; break;
         default: text = "Reserved"; break;

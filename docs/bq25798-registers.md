@@ -67,6 +67,11 @@ with a 1 mV or 1 mA LSB.
 5 unknown adapter · 6 non-standard adapter · 7 OTG · 8 unqualified adapter ·
 `0xB` powered directly from VBUS · `0xC` backup mode
 
+`8` is what the charger reports for any input it has not classified: on a board whose D+/D- pins are unconnected
+or with `auto_input_detection: false` it reads 8 for a panel that is charging normally (SunSprout .105, DPS-150
+bench runs). The text sensor then says "Not classified (no D+/D- detection)"; use `power_good`, VBUS and
+the charge status to judge whether the input is in use.
+
 **`0x1D` Charger Status 2** — `ICO_STAT[7:6]`, `TREG_STAT[2]`, `DPDM_STAT[1]`,
 `VBAT_PRESENT[0]`
 
