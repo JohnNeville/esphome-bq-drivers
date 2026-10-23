@@ -173,6 +173,32 @@ This only affects plug-ins after the firmware starts; a detection that already r
 is not undone. The bit is cleared by a register reset and by a watchdog expiry, and the
 component rewrites it in both cases.
 
+**The ADC is switched off before the host sleeps.** The component keeps the ADC running
+(`ADC_EN`, continuous) while the board is awake, which is what feeds the voltage, current and
+temperature sensors. Left running through deep sleep it is the largest quiescent load the
+charger adds: the datasheet gives 17 µA typical with the ADC disabled and 540 µA with it enabled
+(battery only, `VBAT` = 8 V, §6.5), and with the `TS` channel enabled and `VBAT` above 3.2 V the
+`REGN` LDO also runs in battery-only mode (§7.3.4.1) and biases the `TS` divider. In the shutdown
+hook, which runs before deep sleep, a restart or an OTA update, the component writes `ADC_EN` = 0
+with one-shot selected, the stop the datasheet recommends (§7.3.10). The next boot's setup turns
+the ADC back on, so nothing changes while the board is awake. It is on by default:
+
+```yaml
+bq25798:
+  adc_off_before_sleep: true    # default; false leaves the ADC running through sleep
+  adc_off_in_sleep:             # optional switch: change it at run time
+    name: "ADC Off Before Sleep"
+    disabled_by_default: true
+```
+
+The switch is restored across reboots and deep sleep, and starts on. With the switch declared it
+is the control: to keep the ADC running in sleep, set `restore_mode: ALWAYS_OFF` on the switch.
+`adc_off_before_sleep: false` together with the switch is rejected, because the switch would
+override it at boot. The sensors stop updating while the ADC is off, which only matters if
+something reads them during the shutdown. Measured on one
+hub (no thermistor, gauge enabled, 3.7 V supply, nothing on the user rail), the settled sleep
+current fell from 1.06 mA to 0.47 mA. That is one board and one set-up, not a figure for every build.
+
 ### Choosing which input powers the board
 
 `input_selection` adds a drop-down that decides which of the two input ports may power the
