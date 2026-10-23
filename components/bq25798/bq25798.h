@@ -123,6 +123,7 @@ class BQ25798StatLedSwitch;
 class BQ25798Acdrv1Switch;
 class BQ25798Acdrv2Switch;
 class BQ25798IcoSwitch;
+class BQ25798AdcSleepSwitch;
 class BQ25798ChargeCurrentNumber;
 class BQ25798ChargeVoltageNumber;
 class BQ25798InputCurrentNumber;
@@ -179,6 +180,9 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_acdrv1_switch(BQ25798Acdrv1Switch *s) { acdrv1_switch_ = s; }
   void set_acdrv2_switch(BQ25798Acdrv2Switch *s) { acdrv2_switch_ = s; }
   void set_ico_switch(BQ25798IcoSwitch *s) { ico_switch_ = s; }
+  void set_adc_sleep_switch(BQ25798AdcSleepSwitch *s) { adc_sleep_switch_ = s; }
+  void set_adc_off_before_sleep(bool off) { adc_off_before_sleep_ = off; }
+  bool adc_off_before_sleep() const { return adc_off_before_sleep_; }
 
   void set_charge_current_number(BQ25798ChargeCurrentNumber *n) { charge_current_number_ = n; }
   void set_charge_voltage_number(BQ25798ChargeVoltageNumber *n) { charge_voltage_number_ = n; }
@@ -347,6 +351,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   BQ25798Acdrv1Switch *acdrv1_switch_{nullptr};
   BQ25798Acdrv2Switch *acdrv2_switch_{nullptr};
   BQ25798IcoSwitch *ico_switch_{nullptr};
+  BQ25798AdcSleepSwitch *adc_sleep_switch_{nullptr};
 
   BQ25798ChargeCurrentNumber *charge_current_number_{nullptr};
   BQ25798ChargeVoltageNumber *charge_voltage_number_{nullptr};
@@ -368,6 +373,9 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   float ts_nominal_ohms_{10000.0f};
   float ts_beta_{3435.0f};
   bool ts_ignore_{false};
+  // Write ADC_EN = 0 in on_shutdown(), so the ADC and the REGN bias it brings up are off while the host sleeps. Setup
+  // turns the ADC back on after every wake, so this never changes what the board does while it is awake.
+  bool adc_off_before_sleep_{true};
   bool auto_input_detection_{true};
 
   uint16_t battery_capacity_{0};
@@ -474,6 +482,24 @@ class BQ25798IcoSwitch : public BQ25798Child<switch_::Switch> {
   void write_state(bool state) override {
     if (this->parent_->enable_ico(state))
       this->publish_state(state);
+  }
+};
+
+// Whether the charger's ADC is switched off just before the host sleeps. No register holds this choice: it lives in the
+// driver and in the restored switch state, so it survives deep sleep and reboots through restore_mode (default on).
+class BQ25798AdcSleepSwitch : public BQ25798Child<switch_::Switch> {
+ public:
+  void setup() override {
+    auto initial = this->get_initial_state_with_restore_mode();
+    if (initial.has_value())
+      this->write_state(*initial);
+    else
+      this->publish_state(this->parent_->adc_off_before_sleep());
+  }
+
+  void write_state(bool state) override {
+    this->parent_->set_adc_off_before_sleep(state);
+    this->publish_state(state);
   }
 };
 

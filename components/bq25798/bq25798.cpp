@@ -510,6 +510,16 @@ void BQ25798Component::note_flags_(const uint8_t *f) {
 void BQ25798Component::on_shutdown() {
   ESP_LOGI(TAG, "Shutting down; clearing pending interrupts on /INT");
   this->clear_interrupts();
+  if (!this->adc_off_before_sleep_ || this->is_failed())
+    return;
+  // ADC_EN = 0 with one-shot conversion selected: datasheet 7.3.10 says the lowest quiescent current needs ADC_EN
+  // cleared (not just the channels disabled) and that one-shot is the graceful way to stop. The ADC is also what keeps
+  // the REGN LDO running in battery-only mode while the TS channel is on (7.3.4.1), so this drops that bias too.
+  // The register keeps its value through deep sleep because the charger stays powered; setup() writes it back on wake.
+  if (this->write_u8_(REG2E_ADC_CTRL, 0x40))
+    ESP_LOGD(TAG, "ADC switched off for sleep (ADC_EN = 0)");
+  else
+    ESP_LOGW(TAG, "Could not switch the ADC off for sleep");
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,6 +1023,7 @@ void BQ25798Component::dump_config() {
   ESP_LOGCONFIG(TAG, "  Watchdog: %s", this->watchdog_ == 0 ? "disabled" : "enabled");
   ESP_LOGCONFIG(TAG, "  TS ignore: %s", ONOFF(this->ts_ignore_));
   ESP_LOGCONFIG(TAG, "  Automatic D+/D- input detection: %s", ONOFF(this->auto_input_detection_));
+  ESP_LOGCONFIG(TAG, "  ADC off before sleep: %s", ONOFF(this->adc_off_before_sleep_));
 }
 
 }  // namespace bq25798

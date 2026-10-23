@@ -110,6 +110,8 @@ bq25798:
     name: "Enable Input 2"
   enable_ico:
     name: "Enable ICO"
+  adc_off_in_sleep:
+    name: "ADC Off Before Sleep"
 
   charge_current:
     name: "Charge Current Limit"

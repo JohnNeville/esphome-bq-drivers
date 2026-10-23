@@ -101,6 +101,8 @@ CONF_ENABLE_STAT_LED = "enable_stat_led"
 CONF_ENABLE_ACDRV1 = "enable_acdrv1"
 CONF_ENABLE_ACDRV2 = "enable_acdrv2"
 CONF_ENABLE_ICO = "enable_ico"
+CONF_ADC_OFF_IN_SLEEP = "adc_off_in_sleep"
+CONF_ADC_OFF_BEFORE_SLEEP = "adc_off_before_sleep"
 
 # Numbers
 CONF_CHARGE_CURRENT = "charge_current"
@@ -173,6 +175,7 @@ BQ25798StatLedSwitch = bq25798_ns.class_("BQ25798StatLedSwitch", switch.Switch, 
 BQ25798Acdrv1Switch = bq25798_ns.class_("BQ25798Acdrv1Switch", switch.Switch, cg.Component)
 BQ25798Acdrv2Switch = bq25798_ns.class_("BQ25798Acdrv2Switch", switch.Switch, cg.Component)
 BQ25798IcoSwitch = bq25798_ns.class_("BQ25798IcoSwitch", switch.Switch, cg.Component)
+BQ25798AdcSleepSwitch = bq25798_ns.class_("BQ25798AdcSleepSwitch", switch.Switch, cg.Component)
 
 BQ25798ChargeCurrentNumber = bq25798_ns.class_("BQ25798ChargeCurrentNumber", number.Number, cg.Component)
 BQ25798ChargeVoltageNumber = bq25798_ns.class_("BQ25798ChargeVoltageNumber", number.Number, cg.Component)
@@ -316,6 +319,17 @@ def _validate_ts_network(config):
     return config
 
 
+def _validate_adc_sleep(config):
+    """With the switch declared, the switch decides (its restore_mode, default on). A false adc_off_before_sleep next to
+    it would be overridden at boot, so the two are not allowed to disagree."""
+    if CONF_ADC_OFF_IN_SLEEP in config and not config[CONF_ADC_OFF_BEFORE_SLEEP]:
+        raise cv.Invalid(
+            f"'{CONF_ADC_OFF_BEFORE_SLEEP}: false' has no effect when '{CONF_ADC_OFF_IN_SLEEP}' is declared. "
+            f"Set restore_mode: ALWAYS_OFF on the switch instead, or drop the switch"
+        )
+    return config
+
+
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
@@ -368,6 +382,10 @@ CONFIG_SCHEMA = cv.All(
             # plug-in; on by default in the chip. Turn it off when D+/D- are
             # not wired to the charger or are shared with a native USB port.
             cv.Optional(CONF_AUTO_INPUT_DETECTION, default=True): cv.boolean,
+            # Write ADC_EN = 0 just before the host sleeps (deep sleep, restart or OTA). The ADC costs hundreds of
+            # microamps in battery-only mode, and the REGN bias that comes with it adds more, so it is off by default
+            # while asleep. Setup turns it back on at the next boot. The switch below can change this at runtime.
+            cv.Optional(CONF_ADC_OFF_BEFORE_SLEEP, default=True): cv.boolean,
             # --- Sensors ---
             cv.Optional(CONF_VBUS_VOLTAGE): _voltage_sensor(),
             cv.Optional(CONF_VAC1_VOLTAGE): _voltage_sensor(),
@@ -472,6 +490,14 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:tune",
                 entity_category=ENTITY_CATEGORY_CONFIG,
             ),
+            # Runtime control for adc_off_before_sleep. Its state is restored across reboots and deep sleep and
+            # starts on. Set restore_mode: ALWAYS_OFF to keep the ADC running while asleep.
+            cv.Optional(CONF_ADC_OFF_IN_SLEEP): switch.switch_schema(
+                BQ25798AdcSleepSwitch,
+                icon="mdi:sleep",
+                entity_category=ENTITY_CATEGORY_CONFIG,
+                default_restore_mode="RESTORE_DEFAULT_ON",
+            ),
             # --- Numbers ---
             cv.Optional(CONF_CHARGE_CURRENT): _number(
                 BQ25798ChargeCurrentNumber, UNIT_MILLIAMPERE, 50, 5000, 10
@@ -543,6 +569,7 @@ CONFIG_SCHEMA = cv.All(
     _validate_chemistry,
     _validate_ship_fet,
     _validate_ts_network,
+    _validate_adc_sleep,
 )
 
 SENSOR_SETTERS = {
@@ -586,6 +613,7 @@ SWITCH_SETTERS = {
     CONF_ENABLE_ACDRV1: "set_acdrv1_switch",
     CONF_ENABLE_ACDRV2: "set_acdrv2_switch",
     CONF_ENABLE_ICO: "set_ico_switch",
+    CONF_ADC_OFF_IN_SLEEP: "set_adc_sleep_switch",
 }
 
 NUMBER_SETTERS = {
@@ -635,6 +663,7 @@ async def to_code(config):
     cg.add(var.set_register_check(REGISTER_CHECK_OPTIONS[config[CONF_REGISTER_CHECK]]))
     cg.add(var.set_ts_ignore(config[CONF_TS_IGNORE]))
     cg.add(var.set_auto_input_detection(config[CONF_AUTO_INPUT_DETECTION]))
+    cg.add(var.set_adc_off_before_sleep(config[CONF_ADC_OFF_BEFORE_SLEEP]))
 
     if CONF_TS_RESISTOR_UPPER in config:
         cg.add(
