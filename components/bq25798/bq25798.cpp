@@ -435,7 +435,12 @@ bool BQ25798Component::set_vindpm(float voltage_v) {
 bool BQ25798Component::set_min_sys_voltage(float voltage_v) {
   if (std::isnan(voltage_v))
     return false;
-  uint16_t mv = clamp<uint16_t>(static_cast<uint16_t>(lroundf(voltage_v * 1000.0f)), 2500, 16000);
+  const uint16_t ceiling_mv = static_cast<uint16_t>(lroundf(this->min_sys_voltage_ceiling() * 1000.0f));
+  const uint16_t requested_mv = static_cast<uint16_t>(lroundf(voltage_v * 1000.0f));
+  if (requested_mv > ceiling_mv)
+    ESP_LOGW(TAG, "Minimum system voltage %.2f V is above the %.2f V limit for %u cell(s): using the limit", voltage_v,
+             ceiling_mv / 1000.0f, static_cast<unsigned>(this->cell_count_));
+  uint16_t mv = clamp<uint16_t>(requested_mv, 2500, ceiling_mv);
   uint8_t code = static_cast<uint8_t>((mv - static_cast<uint16_t>(VSYSMIN_OFFSET_MV)) /
                                       static_cast<uint16_t>(VSYSMIN_STEP_MV));
   return this->modify_u8_(REG00_VSYSMIN, 0x3F, code & 0x3F);
@@ -747,7 +752,28 @@ void BQ25798Component::reconcile_() {
 // Read-back of control state, so Home Assistant reflects the chip at boot
 // ---------------------------------------------------------------------------
 
+// The register is checked on every state refresh, whatever register_check is set to, and whoever wrote it: the host, the
+// Home Assistant number, or a value left in the charger from before (it survives a reboot of this board). On 2026-10-24 a
+// board ran for 2 h 12 min with VSYSMIN at 5.75 V and a 3.4 V pack, and overheated.
+void BQ25798Component::limit_min_sys_voltage_() {
+  uint8_t byte;
+  if (!this->read_u8_(REG00_VSYSMIN, byte))
+    return;
+  const float seen_v = ((byte & 0x3F) * VSYSMIN_STEP_MV + VSYSMIN_OFFSET_MV) / 1000.0f;
+  const float ceiling_v = this->min_sys_voltage_ceiling();
+  if (seen_v <= ceiling_v + 0.001f)
+    return;
+  ESP_LOGW(TAG, "Minimum system voltage reads %.2f V, above the %.2f V limit for %u cell(s): writing the limit back",
+           seen_v, ceiling_v, static_cast<unsigned>(this->cell_count_));
+  this->corrections_++;
+  char detail[64];
+  snprintf(detail, sizeof(detail), "read %.2f V, limit %.2f V, rewritten", seen_v, ceiling_v);
+  this->note_correction_("VSYSMIN", detail);
+  this->set_min_sys_voltage(ceiling_v);
+}
+
 void BQ25798Component::publish_control_states_() {
+  this->limit_min_sys_voltage_();
   uint8_t ctrl0, ctrl3, ctrl4, mppt;
   if (this->read_u8_(REG0F_CHG_CTRL0, ctrl0)) {
     if (this->charging_switch_ != nullptr)
