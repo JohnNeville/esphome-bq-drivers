@@ -246,7 +246,11 @@ def _number(cls, unit, min_value, max_value, step):
     ).extend(
         {
             cv.Optional("min_value", default=min_value): cv.float_,
-            cv.Optional("max_value", default=max_value): cv.float_,
+            (
+                cv.Optional("max_value", default=max_value)
+                if max_value is not None
+                else cv.Optional("max_value")
+            ): cv.float_,
             cv.Optional("step", default=step): cv.float_,
         }
     )
@@ -329,6 +333,23 @@ def _validate_adc_sleep(config):
             f"'{CONF_ADC_OFF_BEFORE_SLEEP}: false' has no effect when '{CONF_ADC_OFF_IN_SLEEP}' is declared. "
             f"Set restore_mode: ALWAYS_OFF on the switch instead, or drop the switch"
         )
+    return config
+
+
+def _validate_min_system_voltage(config):
+    """Above the pack voltage the charger holds the system rail at the minimum system voltage and charges the pack
+    through the battery FET in linear mode, which is heat. The driver limits it to 3.5 V per cell (the charger's own
+    default for one cell), so the slider stops there and a larger max_value is refused."""
+    ceiling = 3.5 * config[CONF_CELL_COUNT]
+    entry = config.get(CONF_MIN_SYSTEM_VOLTAGE)
+    if entry is None:
+        return config
+    if entry.get("max_value", ceiling) > ceiling:
+        raise cv.Invalid(
+            f"'{CONF_MIN_SYSTEM_VOLTAGE}' max_value cannot be above {ceiling} V for {config[CONF_CELL_COUNT]} cell(s) "
+            f"(3.5 V per cell): a higher minimum system voltage overheats the charger path"
+        )
+    entry.setdefault("max_value", ceiling)
     return config
 
 
@@ -523,8 +544,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_VINDPM): _number(
                 BQ25798VindpmNumber, UNIT_VOLT, 3.6, 22.0, 0.1
             ),
+            # max_value is filled in by _validate_min_system_voltage from the cell count.
             cv.Optional(CONF_MIN_SYSTEM_VOLTAGE): _number(
-                BQ25798MinSysVoltageNumber, UNIT_VOLT, 2.5, 16.0, 0.25
+                BQ25798MinSysVoltageNumber, UNIT_VOLT, 2.5, None, 0.25
             ),
             # --- Buttons ---
             cv.Optional(CONF_SHIP_MODE): button.button_schema(
@@ -582,6 +604,7 @@ CONFIG_SCHEMA = cv.All(
     _validate_ship_fet,
     _validate_ts_network,
     _validate_adc_sleep,
+    _validate_min_system_voltage,
 )
 
 SENSOR_SETTERS = {

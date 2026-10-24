@@ -79,6 +79,10 @@ static const float VINDPM_STEP_MV = 100.0f;   // REG05, range 3600-22000 mV
 static const float IINDPM_STEP_MA = 10.0f;    // REG06, range 100-3300 mA
 static const float VSYSMIN_STEP_MV = 250.0f;  // REG00, offset 2500 mV
 static const float VSYSMIN_OFFSET_MV = 2500.0f;
+// VSYSMIN is limited to the charger's own one-cell default per cell. Above the pack voltage the charger holds the system
+// rail at VSYSMIN and feeds the battery through the battery FET in linear mode, and the difference times the charge current
+// is heat in the board (see docs/bq25798-register-behaviour.md).
+static const float VSYSMIN_PER_CELL_MAX_V = 3.5f;
 static const float ITERM_STEP_MA = 40.0f;     // REG09[4:0], range 40-1000 mA
 static const float TS_STEP_PCT = 0.0976563f;  // REG3F, percent of REGN
 static const float TDIE_STEP_C = 0.5f;        // REG41, two's complement
@@ -289,6 +293,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool set_input_current(float current_ma);
   bool set_vindpm(float voltage_v);
   bool set_min_sys_voltage(float voltage_v);
+  float min_sys_voltage_ceiling() const { return VSYSMIN_PER_CELL_MAX_V * this->cell_count_; }
   bool set_voc_ratio(size_t index);
   bool set_voc_delay(size_t index);
   bool set_voc_rate(size_t index);
@@ -311,6 +316,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void configure_defaults_();
   void publish_control_states_();
   void input_selection_step_();
+  void limit_min_sys_voltage_();
   void kick_watchdog_();
   // One burst read of the whole control, status and ADC-control block, compared with what the host
   // last asked for. See docs/bq25798-register-behaviour.md for which fields are enforced.
@@ -551,8 +557,10 @@ class BQ25798VindpmNumber : public BQ25798Child<number::Number> {
 class BQ25798MinSysVoltageNumber : public BQ25798Child<number::Number> {
  public:
   void control(float value) override {
+    // set_min_sys_voltage() limits the value, so publish what was applied and not what was asked for.
+    const float applied = std::min(value, this->parent_->min_sys_voltage_ceiling());
     if (this->parent_->set_min_sys_voltage(value))
-      this->publish_state(value);
+      this->publish_state(applied);
   }
 };
 

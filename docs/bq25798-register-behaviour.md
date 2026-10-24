@@ -53,6 +53,16 @@ never write).
    `EN_HIZ` is clear and `VSYS_STAT` is clear; otherwise it would rewrite the bit every 5 s and count each write
    as a correction (it did, 2026-10-22, on a LiFePO4 pack at 3.29 V against the default 3.5 V `VSYSMIN`). The
    `vsys_regulation` entity shows the condition, and one warning is logged when MPPT is wanted but blocked by it.
+   **`VSYSMIN` above the pack voltage is a heat source, so the driver limits it to 3.5 V per cell** (the charger's own
+   default for one cell; `cell_count` sets the limit). With the battery below `VSYSMIN` the charger holds the system rail
+   at `VSYSMIN` and charges the pack through the battery FET in linear mode, so (`VSYSMIN` - `VBAT`) x the charge
+   current is dissipated in the board. On 2026-10-24 a board ran for 2 h 12 min with `VSYSMIN` at 5.75 V (set by a
+   slider in Home Assistant) and a 3.4 V pack, and overheated enough to melt a plastic bag around it. The number's
+   range stops at the limit, `max_value` above it fails validation, `set_min_sys_voltage()` clamps and logs, and
+   every state refresh reads REG0x00 and writes the limit back (logged, counted as a correction) if the register is
+   higher, whoever wrote it. This check does not depend on `register_check`, and it also corrects a value left in the
+   charger from before a reboot of the host. That the charger dissipates the difference in the battery FET is the
+   datasheet's behaviour as understood here; the 2026-10-24 temperature was not measured.
 5. **`DIS_ACDRV` is reset when VAC falls below the present threshold**, and `EN_ACDRV1/2` lock at 0
    if no ACFET-RBFET pair is detected at power-on.
 6. **No INT for host writes or silent charger changes.** The INT pin pulses on *status* edges (below).
