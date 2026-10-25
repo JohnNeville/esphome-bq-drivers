@@ -20,6 +20,9 @@ static const uint8_t SEAL_RETRIES = 10;
 static const uint32_t FLASH_SETUP_DELAY_MS = 5;
 // 65535 means "not computable yet" for both of the time-remaining commands.
 static const uint16_t TIME_UNKNOWN = 0xFFFF;
+// The gauge's DSG flag only sets above its own discharge threshold (100 mA by default), so a board that idles at 30 to
+// 50 mA reads "not discharging". Anything at or below this negative current counts as discharging as well.
+static const int16_t DISCHARGING_MIN_MA = 10;
 
 // ---------------------------------------------------------------------------
 // Low-level access
@@ -653,8 +656,13 @@ void BQ34Z100Component::update() {
 
   uint16_t flags;
   if (this->read_word_(CMD_FLAGS, flags)) {
+    bool discharging = (flags & FLAG_DSG) != 0;
+    uint16_t current_raw;
+    if (!discharging && (this->discharging_sensor_ != nullptr || this->status_text_sensor_ != nullptr) &&
+        this->read_word_(CMD_CURRENT, current_raw))
+      discharging = static_cast<int16_t>(current_raw) <= -DISCHARGING_MIN_MA;
     if (this->discharging_sensor_ != nullptr)
-      this->discharging_sensor_->publish_state((flags & FLAG_DSG) != 0);
+      this->discharging_sensor_->publish_state(discharging);
     if (this->fully_charged_sensor_ != nullptr)
       this->fully_charged_sensor_->publish_state((flags & FLAG_FC) != 0);
     if (this->charge_inhibited_sensor_ != nullptr)
@@ -688,7 +696,7 @@ void BQ34Z100Component::update() {
       if (flags & FLAG_TDD) append("Tab disconnect");
       if (flags & FLAG_SOCF) append("Critical charge");
       else if (flags & FLAG_SOC1) append("Low charge");
-      if (flags & FLAG_DSG) append("Discharging");
+      if (discharging) append("Discharging");
       this->status_text_sensor_->publish_state(status.empty() ? "Idle" : status);
     }
   }

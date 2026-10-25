@@ -937,7 +937,7 @@ void BQ25798Component::update() {
       this->battery_temperature_sensor_->publish_state(this->ts_percent_to_celsius_(raw * TS_STEP_PCT / 100.0f));
   }
 
-  uint8_t status0, status1, status2;
+  uint8_t status0 = 0, status1, status2;
   if (this->read_u8_(REG1B_STATUS0, status0)) {
     if (this->active_input_text_sensor_ != nullptr) {
       uint8_t c3, c4;
@@ -1004,9 +1004,10 @@ void BQ25798Component::update() {
         case 0x6: text = "Non-standard adapter"; break;
         case 0x7: text = "OTG mode"; break;
         case 0x8:
-          // With the D+/D- pins unconnected (or auto_input_detection off) the charger never classifies the source and
-          // reports 8 for any input, including a solar panel that is charging normally.
-          text = this->auto_input_detection_ ? "Unqualified adapter" : "Not classified (no D+/D- detection)";
+          // The charger reports 8 for any input it has not classified, and a solar panel has no D+/D- to classify it
+          // by, so a panel that is charging normally reads 8. The charger only calls the source unqualified in the
+          // sense that matters when its power-good bit is clear, as after a failed poor-source test.
+          text = (status0 & 0x08) != 0 ? "Not classified (powering the board)" : "Unqualified adapter";
           break;
         case 0xB: text = "Powered directly from VBUS"; break;
         case 0xC: text = "Backup mode"; break;
