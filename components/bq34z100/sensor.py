@@ -80,6 +80,9 @@ CONF_TIME_TO_FULL = "time_to_full"
 CONF_CYCLE_COUNT = "cycle_count"
 CONF_STATE_OF_HEALTH = "state_of_health"
 CONF_CHEM_ID = "chem_id"
+CONF_QMAX = "qmax"
+CONF_UPDATE_STATUS = "update_status"
+CONF_LEARNING_INTERVAL = "learning_interval"
 
 # Binary sensors
 CONF_DISCHARGING = "discharging"
@@ -95,6 +98,7 @@ CONF_OVER_TEMPERATURE = "over_temperature"
 CONF_STATUS = "status"
 CONF_CONFIG_STATUS = "config_status"
 CONF_CONFIG_PROBLEM = "config_problem"
+CONF_LEARNING_STATUS = "learning_status"
 
 # Buttons
 CONF_CC_OFFSET_CALIBRATION = "cc_offset_calibration"
@@ -236,6 +240,14 @@ CONFIG_SCHEMA = cv.All(
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 icon="mdi:flask-outline",
             ),
+            # Impedance Track learning progress, read from data flash (subclass 82), which needs the gauge
+            # unsealed for a moment every learning_interval.
+            cv.Optional(CONF_QMAX): _capacity_sensor(),
+            cv.Optional(CONF_UPDATE_STATUS): sensor.sensor_schema(
+                accuracy_decimals=0,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:school-outline",
+            ),
             # --- Binary sensors (decoded from Flags(), 0x0E) ---
             cv.Optional(CONF_DISCHARGING): binary_sensor.binary_sensor_schema(
                 device_class="battery_charging",
@@ -279,6 +291,10 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:clipboard-check-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            cv.Optional(CONF_LEARNING_STATUS): text_sensor.text_sensor_schema(
+                icon="mdi:school-outline",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_CONFIG_PROBLEM): binary_sensor.binary_sensor_schema(
                 device_class="problem",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -318,6 +334,7 @@ CONFIG_SCHEMA = cv.All(
             ),
         }
     )
+    .extend({cv.Optional(CONF_LEARNING_INTERVAL, default="5min"): cv.positive_time_period_milliseconds})
     .extend(cv.polling_component_schema("60s"))
     .extend(i2c.i2c_device_schema(0x55)),
 )
@@ -338,6 +355,8 @@ SENSOR_SETTERS = {
     CONF_CYCLE_COUNT: "set_cycle_count_sensor",
     CONF_STATE_OF_HEALTH: "set_state_of_health_sensor",
     CONF_CHEM_ID: "set_chem_id_sensor",
+    CONF_QMAX: "set_qmax_sensor",
+    CONF_UPDATE_STATUS: "set_update_status_sensor",
 }
 
 BINARY_SENSOR_SETTERS = {
@@ -403,6 +422,11 @@ async def to_code(config):
     if CONF_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_STATUS])
         cg.add(var.set_status_text_sensor(ts))
+
+    cg.add(var.set_learning_interval(config[CONF_LEARNING_INTERVAL]))
+    if CONF_LEARNING_STATUS in config:
+        ts = await text_sensor.new_text_sensor(config[CONF_LEARNING_STATUS])
+        cg.add(var.set_learning_status_text_sensor(ts))
 
     if CONF_CONFIG_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_CONFIG_STATUS])

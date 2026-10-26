@@ -81,8 +81,13 @@ static const uint8_t OFFSET_ALERT_CONFIGURATION = 5;   // H2
 static const uint8_t OFFSET_NUMBER_OF_SERIES_CELL = 7; // U1
 
 static const uint8_t SUBCLASS_CALIBRATION = 104;
+static const uint8_t SUBCLASS_STATE = 82;           // Qmax, cycle count, Update Status
 static const uint8_t OFFSET_CC_GAIN = 0;         // F4, TI float
 static const uint8_t OFFSET_CC_DELTA = 4;        // F4, TI float
+static const uint8_t OFFSET_QMAX = 0;              // I2, mAh (subclass 82)
+static const uint8_t OFFSET_UPDATE_STATUS = 4;      // H1, 0x00 to 0x06 (subclass 82)
+static const uint8_t OFFSET_CC_OFFSET = 8;          // I2 (subclass 104)
+static const uint8_t OFFSET_BOARD_OFFSET = 10;      // I1 (subclass 104)
 static const uint8_t OFFSET_VOLTAGE_DIVIDER = 14;  // U2, mV full scale
 
 // Pack Configuration bits (Table 7-14). The table is laid out as a 16-bit
@@ -164,6 +169,8 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_cycle_count_sensor(sensor::Sensor *s) { cycle_count_sensor_ = s; }
   void set_state_of_health_sensor(sensor::Sensor *s) { state_of_health_sensor_ = s; }
   void set_chem_id_sensor(sensor::Sensor *s) { chem_id_sensor_ = s; }
+  void set_qmax_sensor(sensor::Sensor *s) { qmax_sensor_ = s; }
+  void set_update_status_sensor(sensor::Sensor *s) { update_status_sensor_ = s; }
 
   void set_discharging_sensor(binary_sensor::BinarySensor *s) { discharging_sensor_ = s; }
   void set_fully_charged_sensor(binary_sensor::BinarySensor *s) { fully_charged_sensor_ = s; }
@@ -176,6 +183,8 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
 
   void set_status_text_sensor(text_sensor::TextSensor *s) { status_text_sensor_ = s; }
   void set_config_status_text_sensor(text_sensor::TextSensor *s) { config_status_text_sensor_ = s; }
+  void set_learning_status_text_sensor(text_sensor::TextSensor *s) { learning_status_text_sensor_ = s; }
+  void set_learning_interval(uint32_t ms) { learning_interval_ms_ = ms; }
   void set_config_problem_sensor(binary_sensor::BinarySensor *s) { config_problem_sensor_ = s; }
 
   void set_cc_offset_button(BQ34Z100CcOffsetButton *b) { cc_offset_button_ = b; }
@@ -275,6 +284,8 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   sensor::Sensor *cycle_count_sensor_{nullptr};
   sensor::Sensor *state_of_health_sensor_{nullptr};
   sensor::Sensor *chem_id_sensor_{nullptr};
+  sensor::Sensor *qmax_sensor_{nullptr};
+  sensor::Sensor *update_status_sensor_{nullptr};
 
   binary_sensor::BinarySensor *discharging_sensor_{nullptr};
   binary_sensor::BinarySensor *fully_charged_sensor_{nullptr};
@@ -287,6 +298,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
 
   text_sensor::TextSensor *status_text_sensor_{nullptr};
   text_sensor::TextSensor *config_status_text_sensor_{nullptr};
+  text_sensor::TextSensor *learning_status_text_sensor_{nullptr};
   binary_sensor::BinarySensor *config_problem_sensor_{nullptr};
 
   BQ34Z100CcOffsetButton *cc_offset_button_{nullptr};
@@ -314,6 +326,17 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool chem_id_read_{false};
   bool applied_{false};  // data flash was written (or confirmed) this boot
   bool setup_ok_{false};
+
+  // Impedance Track learning progress (data flash subclass 82) and the calibration routines, which run for
+  // several seconds, so they are polled with timeouts instead of blocking the main loop.
+  void read_learning_status_();
+  void poll_calibration_(bool cc_offset, uint32_t started_ms, bool seen_active);
+  void finish_calibration_(bool cc_offset, bool ok);
+  void log_calibration_values_(const char *when);
+  uint32_t learning_interval_ms_{300000};
+  bool calibrating_{false};
+  int16_t last_update_status_{-1};
+  int16_t last_qmax_{-1};
 };
 
 class BQ34Z100CcOffsetButton : public BQ34Z100Child<button::Button> {
