@@ -94,20 +94,24 @@ read from the `PROG` pin at power-on. The component disables the watchdog by def
 case the component kicks it on every `update()` and reapplies its configuration if it ever
 does expire.
 
-**Register check.** Every 5 s the component reads registers `0x00` to `0x30` in one 49-byte
+**Register check (a diagnostic).** Every 5 s the component reads registers `0x00` to `0x30` in one 49-byte
 transaction (about 9.5 ms on a 50 kHz bus) and compares the control bits with what the host last
 asked for. The charger changes some bits itself (`EN_HIZ` after a failed poor-source test,
-`EN_MPPT` when VBUS drops) and none of that raises `/INT`, so this is the only way to see it.
-`register_check:` chooses what happens on a difference:
+`EN_MPPT` when VBUS drops, the ADC enable on entering HIZ) and none of that raises `/INT`, so this is
+how to see it. A board does not need the check to run: MPPT is re-asserted by the normal update, and the
+minimum system voltage limit below applies whatever `register_check` is set to. The check costs an I2C read,
+some formatting and a log line, so a shipping image should set `register_check: off` and a bench image
+should turn it on. `register_check:` chooses what happens on a difference:
 
 | Value | Behaviour |
 |---|---|
 | `watch` (default) | Logs the difference (at most once a minute) and counts it. Writes nothing. |
-| `enforce` | Also writes the value back and reads it to confirm, and clears `EN_HIZ` at most every 30 s. |
-| `off` | No check. |
+| `enforce` | Also writes the value back and reads it to confirm, and clears `EN_HIZ` at most every 30 s. For bench experiments, not recommended: a roof board that never used it started charging at dawn by itself. |
+| `off` | No check. Nothing below is updated. |
 
-The optional `register_corrections:` sensor counts how many times the check has found a difference since
-boot, in `watch` mode too, so it can be graphed in Home Assistant.
+The optional `register_corrections:` sensor counts the checks (one every 5 s) that found a difference since
+boot, in `watch` mode too. A difference that lasts counts on every pass, so the figure is a measure of how long
+the charger and the host disagreed, not how many separate events there were. `last_correction:` names the register.
 
 Which fields are checked, and why, is in
 [`docs/bq25798-register-behaviour.md`](docs/bq25798-register-behaviour.md). Use `watch` first: if
@@ -371,7 +375,9 @@ pin (datasheet Table 7-19). It is written with the rest of the data flash, so it
 
 The names are `over_temperature_charge`, `over_temperature_discharge`, `battery_high`,
 `battery_low`, `charge_inhibited`, `fully_charged`, `charging_allowed`, `ocv_taken`,
-`internal_short`, `tab_disconnect`, `low_charge`, `critical_charge` and `discharging`. An empty
+`internal_short`, `tab_disconnect`, `low_charge`, `critical_charge` and `discharging`. (The `discharging` entity is also
+on when the measured current is 10 mA or more out of the pack, because the gauge's own flag only sets above its discharge
+threshold, 100 mA by default.) An empty
 list writes 0 and turns every alert off. Reading `Flags()` is what `clear_alert` does, and the
 component polls it, so the pin may only stay low until the next poll.
 
