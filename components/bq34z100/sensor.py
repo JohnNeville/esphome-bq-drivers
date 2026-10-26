@@ -38,6 +38,11 @@ CONF_UNSEAL_KEY_0 = "unseal_key_0"
 CONF_UNSEAL_KEY_1 = "unseal_key_1"
 CONF_DESIGN_CAPACITY = "design_capacity"
 CONF_DESIGN_ENERGY = "design_energy"
+CONF_INITIAL_QMAX = "initial_qmax"
+CONF_CELL_CHARGE_VOLTAGE = "cell_charge_voltage"
+CONF_CELL_CHARGE_VOLTAGE_HOT = "cell_charge_voltage_hot"
+CONF_TERMINATE_VOLTAGE = "terminate_voltage"
+CONF_BATTERY_HIGH_VOLTAGE = "battery_high_voltage"
 CONF_CELL_COUNT = "cell_count"
 CONF_SENSE_RESISTOR = "sense_resistor"
 CONF_VOLTAGE_DIVIDER = "voltage_divider"
@@ -184,6 +189,19 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_UNSEAL_KEY_1, default=0x3672): cv.hex_uint16_t,
             cv.Optional(CONF_DESIGN_CAPACITY): cv.int_range(min=0, max=32767),
             cv.Optional(CONF_DESIGN_ENERGY): cv.int_range(min=0, max=32767),
+            # Qmax Cell 0 (mAh) the Impedance Track algorithm starts learning from. TI says to start from the
+            # cell's rated capacity; the gauge ships with 1000. Written only while nothing has been learned yet
+            # (Update Status below 0x05), so a learned value is never overwritten.
+            cv.Optional(CONF_INITIAL_QMAX): cv.int_range(min=1, max=32767),
+            # The gauge decides a charge has finished by comparing the cell voltage with these (mV, one cell):
+            # Cell Charge Voltage for the normal temperature ranges and, if given, the hot range (T3 to T4).
+            # The defaults are for a 4.2 V lithium-ion cell, so a LiFePO4 cell never reaches them.
+            cv.Optional(CONF_CELL_CHARGE_VOLTAGE): cv.int_range(min=1000, max=5000),
+            cv.Optional(CONF_CELL_CHARGE_VOLTAGE_HOT): cv.int_range(min=1000, max=5000),
+            # Cell Terminate Voltage (mV): the loaded voltage the gauge treats as 0 % (default 3000).
+            cv.Optional(CONF_TERMINATE_VOLTAGE): cv.int_range(min=1000, max=3700),
+            # Cell BH Set Volt Threshold (mV); the clear threshold is written 100 mV lower.
+            cv.Optional(CONF_BATTERY_HIGH_VOLTAGE): cv.int_range(min=1000, max=5000),
             cv.Optional(CONF_CELL_COUNT): cv.int_range(min=1, max=16),
             # Value of the external shunt in milliohms; sets CC Gain / CC Delta.
             cv.Optional(CONF_SENSE_RESISTOR): cv.float_range(min=0.1, max=100.0),
@@ -393,6 +411,16 @@ async def to_code(config):
         cg.add(var.set_design_capacity(config[CONF_DESIGN_CAPACITY]))
     if CONF_DESIGN_ENERGY in config:
         cg.add(var.set_design_energy(config[CONF_DESIGN_ENERGY]))
+    if CONF_INITIAL_QMAX in config:
+        cg.add(var.set_initial_qmax(config[CONF_INITIAL_QMAX]))
+    if CONF_CELL_CHARGE_VOLTAGE in config:
+        cg.add(var.set_cell_charge_voltage(config[CONF_CELL_CHARGE_VOLTAGE]))
+    if CONF_CELL_CHARGE_VOLTAGE_HOT in config:
+        cg.add(var.set_cell_charge_voltage_hot(config[CONF_CELL_CHARGE_VOLTAGE_HOT]))
+    if CONF_TERMINATE_VOLTAGE in config:
+        cg.add(var.set_terminate_voltage(config[CONF_TERMINATE_VOLTAGE]))
+    if CONF_BATTERY_HIGH_VOLTAGE in config:
+        cg.add(var.set_battery_high_voltage(config[CONF_BATTERY_HIGH_VOLTAGE]))
     if CONF_CELL_COUNT in config:
         cg.add(var.set_cell_count(config[CONF_CELL_COUNT]))
     if CONF_SENSE_RESISTOR in config:

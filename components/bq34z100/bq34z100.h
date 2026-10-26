@@ -84,6 +84,14 @@ static const uint8_t SUBCLASS_CALIBRATION = 104;
 static const uint8_t SUBCLASS_STATE = 82;           // Qmax, cycle count, Update Status
 static const uint8_t OFFSET_CC_GAIN = 0;         // F4, TI float
 static const uint8_t OFFSET_CC_DELTA = 4;        // F4, TI float
+static const uint8_t OFFSET_CELL_CHARGE_VOLTAGE_T1_T2 = 17;  // U2, mV (subclass 48)
+static const uint8_t OFFSET_CELL_CHARGE_VOLTAGE_T2_T3 = 19;  // U2, mV
+static const uint8_t OFFSET_CELL_CHARGE_VOLTAGE_T3_T4 = 21;  // U2, mV
+static const uint8_t SUBCLASS_IT_CFG = 80;
+static const uint8_t OFFSET_CELL_TERMINATE_VOLTAGE = 53;     // I2, mV (subclass 80)
+static const uint8_t SUBCLASS_DISCHARGE = 49;                // alert thresholds
+static const uint8_t OFFSET_CELL_BH_SET_VOLT = 13;           // I2, mV (subclass 49)
+static const uint8_t OFFSET_CELL_BH_CLEAR_VOLT = 16;         // I2, mV
 static const uint8_t OFFSET_QMAX = 0;              // I2, mAh (subclass 82)
 static const uint8_t OFFSET_UPDATE_STATUS = 4;      // H1, 0x00 to 0x06 (subclass 82)
 static const uint8_t OFFSET_CC_OFFSET = 8;          // I2 (subclass 104)
@@ -205,6 +213,11 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   }
   void set_design_capacity(int16_t mah) { design_capacity_ = mah; }
   void set_design_energy(int16_t mwh) { design_energy_ = mwh; }
+  void set_initial_qmax(int16_t mah) { initial_qmax_ = mah; }
+  void set_cell_charge_voltage(int16_t mv) { cell_charge_voltage_ = mv; }
+  void set_cell_charge_voltage_hot(int16_t mv) { cell_charge_voltage_hot_ = mv; }
+  void set_terminate_voltage(int16_t mv) { terminate_voltage_ = mv; }
+  void set_battery_high_voltage(int16_t mv) { battery_high_voltage_ = mv; }
   void set_cell_count(uint8_t count) { cell_count_ = count; }
   void set_sense_resistor(float milliohms) { sense_resistor_ = milliohms; }
   void set_voltage_divider(uint16_t mv) { voltage_divider_ = mv; }
@@ -313,6 +326,11 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   uint16_t unseal_key1_{0x3672};
   int16_t design_capacity_{-1};
   int16_t design_energy_{-1};
+  int16_t initial_qmax_{-1};
+  int16_t cell_charge_voltage_{-1};
+  int16_t cell_charge_voltage_hot_{-1};
+  int16_t terminate_voltage_{-1};
+  int16_t battery_high_voltage_{-1};
   uint8_t cell_count_{0};
   float sense_resistor_{0.0f};
   uint16_t voltage_divider_{0};
@@ -329,6 +347,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
 
   // Impedance Track learning progress (data flash subclass 82) and the calibration routines, which run for
   // several seconds, so they are polled with timeouts instead of blocking the main loop.
+  bool pack_declared_() const;
   void read_learning_status_();
   void poll_calibration_(bool cc_offset, uint32_t started_ms, bool seen_active);
   void finish_calibration_(bool cc_offset, bool ok);

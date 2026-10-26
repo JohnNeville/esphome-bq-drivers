@@ -280,6 +280,36 @@ void BQ34Z100Component::apply_configuration_() {
     this->update_flash_bytes_(SUBCLASS_CALIBRATION, OFFSET_VOLTAGE_DIVIDER, buf, 2);
   }
 
+  auto write_word = [this](uint8_t subclass, uint8_t offset, int16_t value) {
+    uint8_t buf[2] = {static_cast<uint8_t>(value >> 8), static_cast<uint8_t>(value & 0xFF)};
+    this->update_flash_bytes_(subclass, offset, buf, 2);
+  };
+  if (this->cell_charge_voltage_ >= 0) {
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T1_T2, this->cell_charge_voltage_);
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T2_T3, this->cell_charge_voltage_);
+    // Without a separate hot value the hot range follows the others.
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T3_T4,
+               this->cell_charge_voltage_hot_ >= 0 ? this->cell_charge_voltage_hot_ : this->cell_charge_voltage_);
+  } else if (this->cell_charge_voltage_hot_ >= 0) {
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T3_T4, this->cell_charge_voltage_hot_);
+  }
+  if (this->terminate_voltage_ >= 0)
+    write_word(SUBCLASS_IT_CFG, OFFSET_CELL_TERMINATE_VOLTAGE, this->terminate_voltage_);
+  if (this->battery_high_voltage_ >= 0) {
+    write_word(SUBCLASS_DISCHARGE, OFFSET_CELL_BH_SET_VOLT, this->battery_high_voltage_);
+    write_word(SUBCLASS_DISCHARGE, OFFSET_CELL_BH_CLEAR_VOLT, this->battery_high_voltage_ - 100);
+  }
+  if (this->initial_qmax_ >= 0) {
+    uint8_t state[1];
+    if (!this->read_flash_bytes_(SUBCLASS_STATE, OFFSET_UPDATE_STATUS, state, 1)) {
+      ESP_LOGW(TAG, "Could not read Update Status; Qmax left alone");
+    } else if (state[0] >= 0x05) {
+      ESP_LOGI(TAG, "Update Status 0x%02X: Qmax is already learned, not overwriting it", state[0]);
+    } else {
+      write_word(SUBCLASS_STATE, OFFSET_QMAX, this->initial_qmax_);
+    }
+  }
+
   this->apply_pack_configuration_();
   this->apply_sense_resistor_();
 
@@ -294,6 +324,13 @@ void BQ34Z100Component::apply_configuration_() {
   this->evaluate_config_();
 }
 
+bool BQ34Z100Component::pack_declared_() const {
+  return this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
+         this->voltage_divider_ > 0 || this->alert_configuration_set_ || this->initial_qmax_ >= 0 ||
+         this->cell_charge_voltage_ >= 0 || this->cell_charge_voltage_hot_ >= 0 || this->terminate_voltage_ >= 0 ||
+         this->battery_high_voltage_ >= 0;
+}
+
 // Works out whether the gauge matches what the YAML declares, using only reads that need no
 // unseal, and publishes the answer so a dashboard or Home Assistant can raise it as a problem.
 void BQ34Z100Component::evaluate_config_() {
@@ -305,8 +342,7 @@ void BQ34Z100Component::evaluate_config_() {
       problems += "; ";
     problems += text;
   };
-  const bool declared = this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
-                        this->voltage_divider_ > 0 || this->alert_configuration_set_;
+  const bool declared = this->pack_declared_();
   if (declared && !this->applied_)
     add("Pack parameters declared but apply_configuration is off, so the gauge flash was not written");
   if (this->design_capacity_ >= 0) {
@@ -672,8 +708,7 @@ void BQ34Z100Component::setup() {
 
   if (this->apply_configuration_flag_) {
     this->apply_configuration_();
-  } else if (this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
-             this->voltage_divider_ > 0 || this->alert_configuration_set_) {
+  } else if (this->pack_declared_()) {
     // Values are declared but writing them is off. Say so rather than letting
     // someone assume a configured gauge is a calibrated one.
     ESP_LOGW(TAG,
