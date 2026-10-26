@@ -249,8 +249,9 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_watchdog(uint8_t encoding) { watchdog_ = encoding; }
 
   // What the periodic register check does when a register no longer holds what the host asked for:
-  // 0 off, 1 watch (log it and count it, change nothing), 2 enforce (write it back and verify).
-  void set_register_check(uint8_t mode) { register_check_ = mode; }
+  // 0 off, 1 watch (log it and count it, change nothing), 2 enforce (write it back and verify). It can be changed
+  // while running: the 5 s timer is started or stopped to match, so "off" costs nothing.
+  void set_register_check(uint8_t mode);
 
   // TS_IGNORE, REG18[0]. The charger normally suspends charging (and OTG)
   // whenever the TS pin sits outside the JEITA window, and an unpopulated

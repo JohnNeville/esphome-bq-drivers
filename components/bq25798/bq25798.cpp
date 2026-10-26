@@ -102,6 +102,18 @@ void BQ25798Component::setup() {
     this->set_interval("reconcile", RECONCILE_INTERVAL_MS, [this]() { this->reconcile_(); });
 }
 
+void BQ25798Component::set_register_check(uint8_t mode) {
+  const uint8_t was = this->register_check_;
+  this->register_check_ = mode;
+  // Before setup() finishes, setup() schedules the timer itself from the value set here.
+  if (!this->setup_ok_ || (mode != 0) == (was != 0))
+    return;
+  if (mode != 0)
+    this->set_interval("reconcile", RECONCILE_INTERVAL_MS, [this]() { this->reconcile_(); });
+  else
+    this->cancel_interval("reconcile");
+}
+
 void BQ25798Component::configure_defaults_() {
   // The watchdog resets ICHG, ITERM, EN_CHG and most of the timer settings
   // back to their PROG-pin power-on defaults when it expires. Disabling it
