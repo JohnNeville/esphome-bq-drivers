@@ -107,9 +107,10 @@ should turn it on. `register_check:` chooses what happens on a difference:
 |---|---|
 | `watch` (default) | Logs the difference (at most once a minute) and counts it. Writes nothing. |
 | `enforce` | Also writes the value back and reads it to confirm, and clears `EN_HIZ` at most every 30 s. For bench experiments, not recommended: a roof board that never used it started charging at dawn by itself. |
-| `off` | No check. Nothing below is updated. |
+| `off` | No check, and no timer. Nothing below is updated. |
 
-The optional `register_corrections:` sensor counts the checks (one every 5 s) that found a difference since
+`register_check` can also be changed while running with `set_register_check(0, 1 or 2)` from a lambda (the SunSprout
+debug package does this from a select). The optional `register_corrections:` sensor counts the checks (one every 5 s) that found a difference since
 boot, in `watch` mode too. A difference that lasts counts on every pass, so the figure is a measure of how long
 the charger and the host disagreed, not how many separate events there were. `last_correction:` names the register.
 
