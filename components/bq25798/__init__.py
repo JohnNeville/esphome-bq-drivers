@@ -59,6 +59,9 @@ CONF_TS_RESISTOR_LOWER = "ts_resistor_lower"
 CONF_TS_NOMINAL_RESISTANCE = "ts_nominal_resistance"
 CONF_TS_BETA = "ts_beta"
 CONF_TS_IGNORE = "ts_ignore"
+CONF_TS_WARM_TEMPERATURE = "ts_warm_temperature"
+CONF_JEITA_WARM_VOLTAGE = "jeita_warm_voltage"
+CONF_MAX_CHARGE_TEMPERATURE = "max_charge_temperature"
 CONF_AUTO_INPUT_DETECTION = "auto_input_detection"
 
 # Sensors
@@ -138,6 +141,18 @@ VOC_RATIO_OPTIONS = [
 ]
 VOC_DELAY_OPTIONS = ["50ms", "300ms", "2s", "5s"]
 VOC_RATE_OPTIONS = ["30s", "2min", "10min", "30min"]
+
+# JEITA_VSET codes (REG17 bits 7:5) by name.
+JEITA_WARM_VOLTAGE = {
+    "suspend": 0,
+    "-800mv": 1,
+    "-600mv": 2,
+    "-400mv": 3,
+    "-300mv": 4,
+    "-200mv": 5,
+    "-100mv": 6,
+    "unchanged": 7,
+}
 
 # Per-cell charge voltage for each supported chemistry, in volts. The charge
 # voltage is derived from this rather than exposed as a control, because
@@ -401,6 +416,16 @@ CONFIG_SCHEMA = cv.All(
             # the only way a board with no thermistor fitted will charge at
             # all -- at the cost of giving up temperature qualification.
             cv.Optional(CONF_TS_IGNORE, default=False): cv.boolean,
+            # TS_WARM (REG18): where the charger's warm range (T3 to T5) starts, in degC. The chip's default is 45.
+            cv.Optional(CONF_TS_WARM_TEMPERATURE): cv.one_of(40, 45, 50, 55, int=True),
+            # JEITA_VSET (REG17): what the charger does with the charge voltage in the warm range. The chip's
+            # default is -400mv, which puts VREG below a charged cell's voltage and trips VBAT_OVP: the converter
+            # stops and the board runs from the battery. "suspend" stops charging and leaves VREG alone.
+            cv.Optional(CONF_JEITA_WARM_VOLTAGE): cv.one_of(*JEITA_WARM_VOLTAGE, lower=True),
+            # Firmware limit: stop charging (EN_CHG) at this battery temperature in degC and resume 2 degC below it.
+            # The charger's own warm threshold only has 5 degC steps; this sits between them. Needs ts_resistor_upper
+            # and ts_resistor_lower, which convert the TS reading to a temperature.
+            cv.Optional(CONF_MAX_CHARGE_TEMPERATURE): cv.float_range(min=0, max=80),
             # AUTO_INDET_EN. The charger's D+/D- input detection on VBUS
             # plug-in; on by default in the chip. Turn it off when D+/D- are
             # not wired to the charger or are shared with a native USB port.
@@ -699,6 +724,12 @@ async def to_code(config):
     cg.add(var.set_watchdog(WATCHDOG_OPTIONS[config[CONF_WATCHDOG]]))
     cg.add(var.set_register_check(REGISTER_CHECK_OPTIONS[config[CONF_REGISTER_CHECK]]))
     cg.add(var.set_ts_ignore(config[CONF_TS_IGNORE]))
+    if CONF_TS_WARM_TEMPERATURE in config:
+        cg.add(var.set_ts_warm_code({40: 0, 45: 1, 50: 2, 55: 3}[config[CONF_TS_WARM_TEMPERATURE]]))
+    if CONF_JEITA_WARM_VOLTAGE in config:
+        cg.add(var.set_jeita_warm_code(JEITA_WARM_VOLTAGE[config[CONF_JEITA_WARM_VOLTAGE]]))
+    if CONF_MAX_CHARGE_TEMPERATURE in config:
+        cg.add(var.set_max_charge_temperature(config[CONF_MAX_CHARGE_TEMPERATURE]))
     cg.add(var.set_auto_input_detection(config[CONF_AUTO_INPUT_DETECTION]))
     cg.add(var.set_adc_off_before_sleep(config[CONF_ADC_OFF_BEFORE_SLEEP]))
 

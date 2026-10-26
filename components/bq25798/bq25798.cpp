@@ -147,6 +147,12 @@ void BQ25798Component::configure_defaults_() {
   // back here, so it is written on every pass rather than only at boot.
   this->modify_u8_(REG18_NTC_CTRL1, 0x01, this->ts_ignore_ ? 0x01 : 0x00);
 
+  // TS_WARM (REG18[5:4]) and JEITA_VSET (REG17[7:5]) also go back to their defaults on a reset or watchdog expiry.
+  if (this->ts_warm_code_ >= 0)
+    this->modify_u8_(REG18_NTC_CTRL1, 0x30, static_cast<uint8_t>(this->ts_warm_code_ << 4));
+  if (this->jeita_warm_code_ >= 0)
+    this->modify_u8_(REG17_NTC_CTRL0, 0xE0, static_cast<uint8_t>(this->jeita_warm_code_ << 5));
+
   // AUTO_INDET_EN. Like TS_IGNORE it is cleared back to its default by a
   // register reset or a watchdog expiry, so it is written on every pass.
   this->modify_u8_(REG11_CHG_CTRL2, 0x40, this->auto_input_detection_ ? 0x40 : 0x00);
@@ -211,7 +217,26 @@ void BQ25798Component::kick_watchdog_() {
 
 bool BQ25798Component::enable_charging(bool enable) {
   this->want_en_chg_ = enable ? 1 : 0;
-  return this->modify_u8_(REG0F_CHG_CTRL0, 0x20, enable ? 0x20 : 0x00);
+  // A temperature hold stays in force until the pack has cooled, whatever the host asks for.
+  return this->modify_u8_(REG0F_CHG_CTRL0, 0x20, (enable && !this->temp_hold_) ? 0x20 : 0x00);
+}
+
+// Holds EN_CHG off from max_charge_temperature and releases it 2 degC lower. EN_CHG only: the converter keeps
+// supplying the board from the input while the pack is not charged.
+void BQ25798Component::apply_temperature_limit_(float celsius) {
+  static const float HYSTERESIS_C = 2.0f;
+  if (!this->temp_hold_ && celsius >= this->max_charge_temp_c_) {
+    this->temp_hold_ = true;
+    ESP_LOGW(TAG, "Battery at %.1f C, at or above the %.1f C charge limit: charging held off", celsius,
+             this->max_charge_temp_c_);
+    this->modify_u8_(REG0F_CHG_CTRL0, 0x20, 0x00);
+  } else if (this->temp_hold_ && celsius < this->max_charge_temp_c_ - HYSTERESIS_C) {
+    this->temp_hold_ = false;
+    ESP_LOGI(TAG, "Battery at %.1f C, below %.1f C: charging allowed again", celsius,
+             this->max_charge_temp_c_ - HYSTERESIS_C);
+    if (this->want_en_chg_ != 0)
+      this->modify_u8_(REG0F_CHG_CTRL0, 0x20, 0x20);
+  }
 }
 
 bool BQ25798Component::enable_hiz(bool enable) {
@@ -665,7 +690,7 @@ void BQ25798Component::reconcile_() {
   if (this->want_iterm_code_ >= 0)
     changed |= this->correct_bits_("ITERM", REG09_TERM, 0x1F, static_cast<uint8_t>(this->want_iterm_code_), r[REG09_TERM]);
   if (this->want_en_chg_ >= 0)
-    changed |= this->correct_bits_("EN_CHG", REG0F_CHG_CTRL0, 0x20, this->want_en_chg_ ? 0x20 : 0x00, r[REG0F_CHG_CTRL0]);
+    changed |= this->correct_bits_("EN_CHG", REG0F_CHG_CTRL0, 0x20, (this->want_en_chg_ && !this->temp_hold_) ? 0x20 : 0x00, r[REG0F_CHG_CTRL0]);
   changed |= this->correct_bits_("EN_TERM", REG0F_CHG_CTRL0, 0x02, 0x02, r[REG0F_CHG_CTRL0]);
   changed |= this->correct_bits_("Safety timers", REG0E_TIMER, 0x38, 0x38, r[REG0E_TIMER]);
   changed |= this->correct_bits_("WATCHDOG", REG10_CHG_CTRL1, 0x07, this->watchdog_ & 0x07, r[REG10_CHG_CTRL1]);
@@ -943,10 +968,15 @@ void BQ25798Component::update() {
       this->die_temperature_sensor_->publish_state(raw * TDIE_STEP_C);
   }
 
-  if (this->battery_temperature_sensor_ != nullptr) {
+  if (this->battery_temperature_sensor_ != nullptr || !std::isnan(this->max_charge_temp_c_)) {
     uint16_t raw;
-    if (this->read_u16_(REG3F_TS_ADC, raw))
-      this->battery_temperature_sensor_->publish_state(this->ts_percent_to_celsius_(raw * TS_STEP_PCT / 100.0f));
+    if (this->read_u16_(REG3F_TS_ADC, raw)) {
+      const float celsius = this->ts_percent_to_celsius_(raw * TS_STEP_PCT / 100.0f);
+      if (this->battery_temperature_sensor_ != nullptr)
+        this->battery_temperature_sensor_->publish_state(celsius);
+      if (!std::isnan(this->max_charge_temp_c_) && !std::isnan(celsius) && !this->ts_ignore_)
+        this->apply_temperature_limit_(celsius);
+    }
   }
 
   uint8_t status0 = 0, status1, status2;

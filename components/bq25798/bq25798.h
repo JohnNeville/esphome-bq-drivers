@@ -230,6 +230,9 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // restored at boot. Boards whose copper is rated below the IC's 5 A must
   // set this; see the SunSprout hub, which is limited to 2000 mA.
   void set_max_charge_current(uint16_t ma) { max_charge_current_ = ma; }
+  void set_ts_warm_code(int8_t code) { ts_warm_code_ = code; }
+  void set_jeita_warm_code(int8_t code) { jeita_warm_code_ = code; }
+  void set_max_charge_temperature(float celsius) { max_charge_temp_c_ = celsius; }
   // Whether an external ship FET is populated on SDRV. The IC locks
   // SDRV_CTRL (ship / shutdown / power reset) at 00 unless SFET_PRESENT is
   // set, and SFET_PRESENT is only meaningful if the FET actually exists.
@@ -385,6 +388,11 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
 
   float ts_upper_ohms_{0.0f};
   float ts_lower_ohms_{0.0f};
+  int8_t ts_warm_code_{-1};
+  int8_t jeita_warm_code_{-1};
+  float max_charge_temp_c_{NAN};
+  bool temp_hold_{false};  // charging held off by max_charge_temperature
+  void apply_temperature_limit_(float celsius);
   float ts_nominal_ohms_{10000.0f};
   float ts_beta_{3435.0f};
   bool ts_ignore_{false};
