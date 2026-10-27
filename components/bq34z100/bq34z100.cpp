@@ -23,6 +23,13 @@ static const uint16_t TIME_UNKNOWN = 0xFFFF;
 // The gauge's DSG flag only sets above its own discharge threshold (100 mA by default), so a board that idles at 30 to
 // 50 mA reads "not discharging". Anything at or below this negative current counts as discharging as well.
 static const int16_t DISCHARGING_MIN_MA = 10;
+// CONTROL_STATUS high byte: CCA (coulomb counter calibration running) is bit 11, BCA (board calibration running) bit 10.
+static const uint16_t STATUS_CCA = 1 << 11;
+static const uint16_t STATUS_BCA = 1 << 10;
+static const uint32_t CALIBRATION_POLL_MS = 500;
+// If the gauge never reports the routine as running, wait this long before treating it as done.
+static const uint32_t CALIBRATION_MIN_MS = 3000;
+static const uint32_t CALIBRATION_TIMEOUT_MS = 60000;
 
 // ---------------------------------------------------------------------------
 // Low-level access
@@ -273,6 +280,36 @@ void BQ34Z100Component::apply_configuration_() {
     this->update_flash_bytes_(SUBCLASS_CALIBRATION, OFFSET_VOLTAGE_DIVIDER, buf, 2);
   }
 
+  auto write_word = [this](uint8_t subclass, uint8_t offset, int16_t value) {
+    uint8_t buf[2] = {static_cast<uint8_t>(value >> 8), static_cast<uint8_t>(value & 0xFF)};
+    this->update_flash_bytes_(subclass, offset, buf, 2);
+  };
+  if (this->cell_charge_voltage_ >= 0) {
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T1_T2, this->cell_charge_voltage_);
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T2_T3, this->cell_charge_voltage_);
+    // Without a separate hot value the hot range follows the others.
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T3_T4,
+               this->cell_charge_voltage_hot_ >= 0 ? this->cell_charge_voltage_hot_ : this->cell_charge_voltage_);
+  } else if (this->cell_charge_voltage_hot_ >= 0) {
+    write_word(SUBCLASS_DATA, OFFSET_CELL_CHARGE_VOLTAGE_T3_T4, this->cell_charge_voltage_hot_);
+  }
+  if (this->terminate_voltage_ >= 0)
+    write_word(SUBCLASS_IT_CFG, OFFSET_CELL_TERMINATE_VOLTAGE, this->terminate_voltage_);
+  if (this->battery_high_voltage_ >= 0) {
+    write_word(SUBCLASS_DISCHARGE, OFFSET_CELL_BH_SET_VOLT, this->battery_high_voltage_);
+    write_word(SUBCLASS_DISCHARGE, OFFSET_CELL_BH_CLEAR_VOLT, this->battery_high_voltage_ - 100);
+  }
+  if (this->initial_qmax_ >= 0) {
+    uint8_t state[1];
+    if (!this->read_flash_bytes_(SUBCLASS_STATE, OFFSET_UPDATE_STATUS, state, 1)) {
+      ESP_LOGW(TAG, "Could not read Update Status; Qmax left alone");
+    } else if (state[0] >= 0x05) {
+      ESP_LOGI(TAG, "Update Status 0x%02X: Qmax is already learned, not overwriting it", state[0]);
+    } else {
+      write_word(SUBCLASS_STATE, OFFSET_QMAX, this->initial_qmax_);
+    }
+  }
+
   this->apply_pack_configuration_();
   this->apply_sense_resistor_();
 
@@ -287,6 +324,13 @@ void BQ34Z100Component::apply_configuration_() {
   this->evaluate_config_();
 }
 
+bool BQ34Z100Component::pack_declared_() const {
+  return this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
+         this->voltage_divider_ > 0 || this->alert_configuration_set_ || this->initial_qmax_ >= 0 ||
+         this->cell_charge_voltage_ >= 0 || this->cell_charge_voltage_hot_ >= 0 || this->terminate_voltage_ >= 0 ||
+         this->battery_high_voltage_ >= 0;
+}
+
 // Works out whether the gauge matches what the YAML declares, using only reads that need no
 // unseal, and publishes the answer so a dashboard or Home Assistant can raise it as a problem.
 void BQ34Z100Component::evaluate_config_() {
@@ -298,8 +342,7 @@ void BQ34Z100Component::evaluate_config_() {
       problems += "; ";
     problems += text;
   };
-  const bool declared = this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
-                        this->voltage_divider_ > 0 || this->alert_configuration_set_;
+  const bool declared = this->pack_declared_();
   if (declared && !this->applied_)
     add("Pack parameters declared but apply_configuration is off, so the gauge flash was not written");
   if (this->design_capacity_ >= 0) {
@@ -497,34 +540,111 @@ bool BQ34Z100Component::dump_data_flash() {
 // Calibration actions
 // ---------------------------------------------------------------------------
 
+// The offsets sit in data flash subclass 104 (CC Offset: signed 16 bit, Board Offset: signed 8 bit). The gauge has to be
+// unsealed.
+void BQ34Z100Component::log_calibration_values_(const char *when) {
+  uint8_t buf[FLASH_BLOCK_SIZE];
+  if (!this->read_flash_block_(SUBCLASS_CALIBRATION, 0, buf)) {
+    ESP_LOGW(TAG, "Could not read the calibration data (%s)", when);
+    return;
+  }
+  int16_t cc_offset = static_cast<int16_t>((buf[OFFSET_CC_OFFSET] << 8) | buf[OFFSET_CC_OFFSET + 1]);
+  int8_t board_offset = static_cast<int8_t>(buf[OFFSET_BOARD_OFFSET]);
+  ESP_LOGI(TAG, "Calibration %s: CC Offset %d, Board Offset %d", when, cc_offset, board_offset);
+}
+
+// The routines run for several seconds and the gauge sets CCA or BCA in CONTROL_STATUS while one is active, so the
+// result is only saved once that bit has cleared. Polled with timeouts so the main loop keeps running.
 bool BQ34Z100Component::run_cc_offset_calibration() {
+  if (this->calibrating_) {
+    ESP_LOGW(TAG, "A calibration is already running");
+    return false;
+  }
   ESP_LOGI(TAG, "Starting coulomb counter offset calibration; keep the pack at rest");
   if (!this->unseal_())
     return false;
-  bool ok = this->control_command_(CTRL_CC_OFFSET);
-  if (ok) {
-    // The routine runs for a while; CC_OFFSET_SAVE commits the result.
-    delay(FLASH_WRITE_DELAY_MS);
-    ok = this->control_command_(CTRL_CC_OFFSET_SAVE);
+  this->calibrating_ = true;
+  this->log_calibration_values_("before");
+  if (!this->control_command_(CTRL_CC_OFFSET)) {
+    this->finish_calibration_(true, false);
+    return false;
   }
-  this->seal_();
-  return ok;
+  uint32_t started = millis();
+  this->set_timeout("calibration", CALIBRATION_POLL_MS, [this, started]() { this->poll_calibration_(true, started, false); });
+  return true;
 }
 
 bool BQ34Z100Component::run_board_offset_calibration() {
+  if (this->calibrating_) {
+    ESP_LOGW(TAG, "A calibration is already running");
+    return false;
+  }
   ESP_LOGI(TAG, "Starting board offset calibration; no current must flow through the shunt");
   if (!this->unseal_())
     return false;
-  bool ok = this->control_command_(CTRL_BOARD_OFFSET);
+  this->calibrating_ = true;
+  this->log_calibration_values_("before");
+  if (!this->control_command_(CTRL_BOARD_OFFSET)) {
+    this->finish_calibration_(false, false);
+    return false;
+  }
+  uint32_t started = millis();
+  this->set_timeout("calibration", CALIBRATION_POLL_MS, [this, started]() { this->poll_calibration_(false, started, false); });
+  return true;
+}
+
+void BQ34Z100Component::poll_calibration_(bool cc_offset, uint32_t started_ms, bool seen_active) {
+  const char *name = cc_offset ? "Coulomb counter offset" : "Board offset";
+  uint16_t status = 0;
+  bool read_ok = this->control_read_(CTRL_CONTROL_STATUS, status);
+  uint32_t elapsed = millis() - started_ms;
+  bool active = read_ok && (status & (cc_offset ? STATUS_CCA : STATUS_BCA)) != 0;
+  if (active && !seen_active)
+    ESP_LOGI(TAG, "%s calibration running (CONTROL_STATUS 0x%04X)", name, status);
+  seen_active = seen_active || active;
+  if (read_ok && !active && (seen_active || elapsed >= CALIBRATION_MIN_MS)) {
+    ESP_LOGI(TAG, "%s calibration finished after %u ms (CONTROL_STATUS 0x%04X)", name, static_cast<unsigned>(elapsed), status);
+    if (!seen_active)
+      ESP_LOGW(TAG, "The gauge never reported the routine as running; the command may have been ignored");
+    this->finish_calibration_(cc_offset, true);
+    return;
+  }
+  if (elapsed >= CALIBRATION_TIMEOUT_MS) {
+    ESP_LOGE(TAG, "%s calibration did not finish within %u s", name, static_cast<unsigned>(CALIBRATION_TIMEOUT_MS / 1000));
+    this->finish_calibration_(cc_offset, false);
+    return;
+  }
+  this->set_timeout("calibration", CALIBRATION_POLL_MS,
+                    [this, cc_offset, started_ms, seen_active]() { this->poll_calibration_(cc_offset, started_ms, seen_active); });
+}
+
+void BQ34Z100Component::finish_calibration_(bool cc_offset, bool ok) {
+  if (ok && cc_offset) {
+    // CC_OFFSET_SAVE commits the result.
+    if (this->control_command_(CTRL_CC_OFFSET_SAVE))
+      delay(FLASH_WRITE_DELAY_MS);
+    else
+      ESP_LOGE(TAG, "CC_OFFSET_SAVE failed; the new offset was not stored");
+  }
+  this->log_calibration_values_("after");
+  this->calibrating_ = false;
   this->seal_();
-  return ok;
 }
 
 bool BQ34Z100Component::enable_impedance_track() {
   ESP_LOGI(TAG, "Enabling the Impedance Track algorithm");
   if (!this->unseal_())
     return false;
+  uint8_t before[FLASH_BLOCK_SIZE];
+  bool have_before = this->read_flash_block_(SUBCLASS_STATE, 0, before);
   bool ok = this->control_command_(CTRL_IT_ENABLE);
+  if (ok) {
+    delay(FLASH_WRITE_DELAY_MS);
+    uint8_t after[FLASH_BLOCK_SIZE];
+    if (have_before && this->read_flash_block_(SUBCLASS_STATE, 0, after))
+      ESP_LOGI(TAG, "Update Status 0x%02X -> 0x%02X (0x04 means Impedance Track is on, not yet learned)",
+               before[OFFSET_UPDATE_STATUS], after[OFFSET_UPDATE_STATUS]);
+  }
   this->seal_();
   return ok;
 }
@@ -588,8 +708,7 @@ void BQ34Z100Component::setup() {
 
   if (this->apply_configuration_flag_) {
     this->apply_configuration_();
-  } else if (this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
-             this->voltage_divider_ > 0 || this->alert_configuration_set_) {
+  } else if (this->pack_declared_()) {
     // Values are declared but writing them is off. Say so rather than letting
     // someone assume a configured gauge is a calibrated one.
     ESP_LOGW(TAG,
@@ -600,6 +719,12 @@ void BQ34Z100Component::setup() {
 
   this->evaluate_config_();
   this->setup_ok_ = true;
+
+  if (this->qmax_sensor_ != nullptr || this->update_status_sensor_ != nullptr ||
+      this->learning_status_text_sensor_ != nullptr) {
+    this->set_timeout("learning_first", 15000, [this]() { this->read_learning_status_(); });
+    this->set_interval("learning", this->learning_interval_ms_, [this]() { this->read_learning_status_(); });
+  }
 }
 
 void BQ34Z100Component::publish_word_(sensor::Sensor *s, uint8_t cmd, float scale, bool is_signed) {
@@ -610,6 +735,58 @@ void BQ34Z100Component::publish_word_(sensor::Sensor *s, uint8_t cmd, float scal
     return;
   float value = is_signed ? static_cast<float>(static_cast<int16_t>(raw)) : static_cast<float>(raw);
   s->publish_state(value * scale);
+}
+
+// Qmax, cycle count and Update Status live in data flash, which only an unsealed gauge will read.
+void BQ34Z100Component::read_learning_status_() {
+  if (!this->setup_ok_ || this->calibrating_)
+    return;
+  if (!this->unseal_()) {
+    ESP_LOGW(TAG, "Learning status needs the gauge unsealed; not reading it again");
+    this->cancel_interval("learning");
+    return;
+  }
+  uint8_t buf[FLASH_BLOCK_SIZE];
+  bool ok = this->read_flash_block_(SUBCLASS_STATE, 0, buf);
+  this->seal_();
+  if (!ok) {
+    ESP_LOGW(TAG, "Could not read the learning status");
+    return;
+  }
+  uint16_t qmax = static_cast<uint16_t>((buf[OFFSET_QMAX] << 8) | buf[OFFSET_QMAX + 1]);
+  uint8_t status = buf[OFFSET_UPDATE_STATUS];
+  const char *text;
+  switch (status) {
+    case 0x00:
+      text = "Not started (Impedance Track off)";
+      break;
+    case 0x02:
+      text = "Learned, Impedance Track off";
+      break;
+    case 0x04:
+      text = "Impedance Track on, not yet learned";
+      break;
+    case 0x05:
+      text = "Qmax learned, resistance not yet";
+      break;
+    case 0x06:
+      text = "Learned (Qmax and resistance)";
+      break;
+    default:
+      text = "Unknown";
+      break;
+  }
+  if (status != this->last_update_status_ || static_cast<int32_t>(qmax) != this->last_qmax_) {
+    ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh", status, text, qmax);
+    this->last_update_status_ = status;
+    this->last_qmax_ = static_cast<int16_t>(qmax);
+  }
+  if (this->qmax_sensor_ != nullptr)
+    this->qmax_sensor_->publish_state(qmax);
+  if (this->update_status_sensor_ != nullptr)
+    this->update_status_sensor_->publish_state(status);
+  if (this->learning_status_text_sensor_ != nullptr)
+    this->learning_status_text_sensor_->publish_state(text);
 }
 
 void BQ34Z100Component::update() {
