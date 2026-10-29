@@ -343,6 +343,8 @@ and diagnostic.
   and whether the rewrite took, with a count per register since boot, for example
   `EN_MPPT x7: REG0x15&0x01 read 0x00, wanted 0x01, write did not take`. It works in `watch` mode too, where
   nothing is rewritten. `register_corrections` counts all of them together.
+  `unexpected_corrections` is the same count without EN_MPPT and EN_HIZ, which the charger flips by itself at dawn and
+  dusk (and EN_HIZ after a failed poor-source test), so a rise in it is worth a look and a rise in the other is not.
 - `ts_status` is `Normal`, `Cool`, `Cold`, `Warm` or `Hot`, from REG0x1F. It reads `Ignored` when
   `ts_ignore` is set, because the charger no longer acts on the pin then. `Cold` with a thermistor
   that is not fitted is the usual reason charging refuses to start.

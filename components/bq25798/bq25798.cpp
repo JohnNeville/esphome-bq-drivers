@@ -1,6 +1,7 @@
 #include "bq25798.h"
 
 #include <cmath>
+#include <cstring>
 
 namespace esphome {
 namespace bq25798 {
@@ -584,10 +585,18 @@ void BQ25798Component::note_correction_(const char *name, const char *detail) {
   this->last_correction_text_sensor_->publish_state(text);
 }
 
+// Counts a correction. The charger flips EN_MPPT and EN_HIZ by itself at dawn and dusk and after a failed poor-source
+// test, so those do not count as unexpected.
+void BQ25798Component::count_correction_(const char *name) {
+  this->corrections_++;
+  if (strcmp(name, "EN_MPPT") != 0 && strcmp(name, "EN_HIZ") != 0)
+    this->unexpected_corrections_++;
+}
+
 bool BQ25798Component::correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen) {
   if ((seen & mask) == want)
     return false;
-  this->corrections_++;
+  this->count_correction_(name);
   char detail[96];
   if (this->register_check_ < 2) {
     snprintf(detail, sizeof(detail), "REG0x%02X&0x%02X read 0x%02X, wanted 0x%02X (watch only)", reg, mask, seen & mask,
@@ -642,7 +651,7 @@ void BQ25798Component::reconcile_() {
   if (this->want_vreg_code_ >= 0) {
     const uint16_t seen = ((static_cast<uint16_t>(r[REG01_VREG]) << 8) | r[REG01_VREG + 1]) & 0x07FF;
     if (seen != this->want_vreg_code_) {
-      this->corrections_++;
+      this->count_correction_("VREG");
       {
         char d[80];
         snprintf(d, sizeof(d), "read %u mV, wanted %u mV%s", seen * 10, this->want_vreg_code_ * 10,
@@ -666,7 +675,7 @@ void BQ25798Component::reconcile_() {
   if (this->want_ichg_code_ >= 0) {
     const uint16_t seen = ((static_cast<uint16_t>(r[REG03_ICHG]) << 8) | r[REG03_ICHG + 1]) & 0x01FF;
     if (seen != this->want_ichg_code_) {
-      this->corrections_++;
+      this->count_correction_("ICHG");
       {
         char d[80];
         snprintf(d, sizeof(d), "read %u mA, wanted %u mA%s", seen * 10, this->want_ichg_code_ * 10,
@@ -700,7 +709,7 @@ void BQ25798Component::reconcile_() {
   const bool hiz_seen = (r[REG0F_CHG_CTRL0] & 0x04) != 0;
   if (hiz_seen != (this->want_hiz_ != 0)) {
     if (this->register_check_ < 2) {
-      this->corrections_++;
+      this->count_correction_("EN_HIZ");
       {
         char d[96];
         snprintf(d, sizeof(d), "EN_HIZ %s, wanted %s, VBUS %s (watch only)", hiz_seen ? "set" : "clear",
@@ -718,7 +727,7 @@ void BQ25798Component::reconcile_() {
       ESP_LOGW(TAG, "EN_HIZ is %s but the host wants it %s (status0 0x%02X, VBUS %s): correcting",
                hiz_seen ? "set" : "clear", this->want_hiz_ ? "set" : "clear", r[REG1B_STATUS0],
                (r[REG1B_STATUS0] & 0x01) ? "present" : "absent");
-      this->corrections_++;
+      this->count_correction_("EN_HIZ");
       {
         char d[96];
         snprintf(d, sizeof(d), "EN_HIZ %s, wanted %s, VBUS %s, cleared", hiz_seen ? "set" : "clear",
@@ -783,6 +792,11 @@ void BQ25798Component::reconcile_() {
     this->published_corrections_ = this->corrections_;
     this->register_corrections_sensor_->publish_state(static_cast<float>(this->corrections_));
   }
+  if (this->unexpected_corrections_sensor_ != nullptr &&
+      this->unexpected_corrections_ != this->published_unexpected_corrections_) {
+    this->published_unexpected_corrections_ = this->unexpected_corrections_;
+    this->unexpected_corrections_sensor_->publish_state(static_cast<float>(this->unexpected_corrections_));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -802,7 +816,7 @@ void BQ25798Component::limit_min_sys_voltage_() {
     return;
   ESP_LOGW(TAG, "Minimum system voltage reads %.2f V, above the %.2f V limit for %u cell(s): writing the limit back",
            seen_v, ceiling_v, static_cast<unsigned>(this->cell_count_));
-  this->corrections_++;
+  this->count_correction_("VSYSMIN");
   char detail[64];
   snprintf(detail, sizeof(detail), "read %.2f V, limit %.2f V, rewritten", seen_v, ceiling_v);
   this->note_correction_("VSYSMIN", detail);
