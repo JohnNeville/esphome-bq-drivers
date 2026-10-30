@@ -75,6 +75,7 @@ CONF_IBAT_CURRENT = "ibat_current"
 CONF_BATTERY_TEMPERATURE = "battery_temperature"
 CONF_DIE_TEMPERATURE = "die_temperature"
 CONF_REGISTER_CORRECTIONS = "register_corrections"
+CONF_UNEXPECTED_CORRECTIONS = "unexpected_corrections"
 
 # Binary sensors
 CONF_VBUS_PRESENT = "vbus_present"
@@ -447,6 +448,8 @@ CONFIG_SCHEMA = cv.All(
             # How many times the periodic register check has found a register that did not hold
             # what the host asked for since boot. Counts in `watch` mode too.
             cv.Optional(CONF_REGISTER_CORRECTIONS): _counter_sensor(),
+            # The same count without EN_MPPT and EN_HIZ, which the charger flips by itself at dawn and dusk.
+            cv.Optional(CONF_UNEXPECTED_CORRECTIONS): _counter_sensor(),
             # --- Binary sensors ---
             cv.Optional(CONF_VBUS_PRESENT): binary_sensor.binary_sensor_schema(
                 device_class=DEVICE_CLASS_POWER
@@ -643,6 +646,7 @@ SENSOR_SETTERS = {
     CONF_BATTERY_TEMPERATURE: "set_battery_temperature_sensor",
     CONF_DIE_TEMPERATURE: "set_die_temperature_sensor",
     CONF_REGISTER_CORRECTIONS: "set_register_corrections_sensor",
+    CONF_UNEXPECTED_CORRECTIONS: "set_unexpected_corrections_sensor",
 }
 
 BINARY_SENSOR_SETTERS = {

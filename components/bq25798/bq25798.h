@@ -164,6 +164,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void set_battery_temperature_sensor(sensor::Sensor *s) { battery_temperature_sensor_ = s; }
   void set_die_temperature_sensor(sensor::Sensor *s) { die_temperature_sensor_ = s; }
   void set_register_corrections_sensor(sensor::Sensor *s) { register_corrections_sensor_ = s; }
+  void set_unexpected_corrections_sensor(sensor::Sensor *s) { unexpected_corrections_sensor_ = s; }
 
   void set_vbus_present_sensor(binary_sensor::BinarySensor *s) { vbus_present_sensor_ = s; }
   void set_vac1_present_sensor(binary_sensor::BinarySensor *s) { vac1_present_sensor_ = s; }
@@ -327,6 +328,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   void reconcile_();
   void note_flags_(const uint8_t *f);
   void note_correction_(const char *name, const char *detail);
+  void count_correction_(const char *name);
   bool correct_bits_(const char *name, uint8_t reg, uint8_t mask, uint8_t want, uint8_t seen);
 
   void publish_voltage_(sensor::Sensor *s, uint8_t reg);
@@ -344,6 +346,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   sensor::Sensor *die_temperature_sensor_{nullptr};
   sensor::Sensor *register_corrections_sensor_{nullptr};
   uint32_t published_corrections_{0xFFFFFFFF};
+  sensor::Sensor *unexpected_corrections_sensor_{nullptr};
+  uint32_t published_unexpected_corrections_{0xFFFFFFFF};
 
   binary_sensor::BinarySensor *vbus_present_sensor_{nullptr};
   binary_sensor::BinarySensor *vac1_present_sensor_{nullptr};
@@ -427,6 +431,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   int8_t want_voc_rate_{-1};
   uint32_t last_hiz_clear_{0};
   uint32_t corrections_{0};
+  uint32_t unexpected_corrections_{0};  // corrections other than EN_MPPT and EN_HIZ
   uint32_t last_drift_log_{0};
   // How many times each register has been found changed since boot, shown with the last correction.
   std::map<std::string, uint32_t> correction_tally_;
