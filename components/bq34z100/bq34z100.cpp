@@ -690,6 +690,22 @@ void BQ34Z100Component::setup() {
     ESP_LOGW(TAG, "DEVICE_TYPE reported 0x%04X, expected 0x%04X", device_type, DEVICE_TYPE_BQ34Z100);
   }
 
+  // Firmware, hardware and data flash versions, to tell which gauge firmware build the pack is running.
+  uint16_t fw_version = 0, hw_version = 0, df_version = 0;
+  bool fw_ok = this->control_read_(CTRL_FW_VERSION, fw_version);
+  bool hw_ok = this->control_read_(CTRL_HW_VERSION, hw_version);
+  bool df_ok = this->control_read_(CTRL_DF_VERSION, df_version);
+  uint16_t chem_checksum = 0;
+  this->control_read_(CTRL_STATIC_CHEM_CHKSUM, chem_checksum);
+  if (fw_ok || hw_ok || df_ok) {
+    char info[96];
+    snprintf(info, sizeof(info), "FW 0x%04X, HW 0x%04X, DF 0x%04X, type 0x%04X, chem checksum 0x%04X", fw_version,
+             hw_version, df_version, device_type, chem_checksum);
+    ESP_LOGI(TAG, "Gauge versions: %s", info);
+    if (this->device_info_text_sensor_ != nullptr)
+      this->device_info_text_sensor_->publish_state(info);
+  }
+
   uint16_t chem_id;
   if (this->control_read_(CTRL_CHEM_ID, chem_id)) {
     this->chem_id_ = chem_id;

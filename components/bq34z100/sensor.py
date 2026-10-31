@@ -104,6 +104,7 @@ CONF_STATUS = "status"
 CONF_CONFIG_STATUS = "config_status"
 CONF_CONFIG_PROBLEM = "config_problem"
 CONF_LEARNING_STATUS = "learning_status"
+CONF_DEVICE_INFO = "device_info"
 CONF_QMAX_UPDATES_ENABLED = "qmax_updates_enabled"
 CONF_VOLTAGE_OK = "voltage_ok"
 CONF_RA_UPDATES_DISABLED = "ra_updates_disabled"
@@ -312,6 +313,11 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:clipboard-check-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            # Gauge firmware, hardware and data flash version words, read once at boot.
+            cv.Optional(CONF_DEVICE_INFO): text_sensor.text_sensor_schema(
+                icon="mdi:chip",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_LEARNING_STATUS): text_sensor.text_sensor_schema(
                 icon="mdi:school-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -474,6 +480,10 @@ async def to_code(config):
     if CONF_LEARNING_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_LEARNING_STATUS])
         cg.add(var.set_learning_status_text_sensor(ts))
+
+    if CONF_DEVICE_INFO in config:
+        ts = await text_sensor.new_text_sensor(config[CONF_DEVICE_INFO])
+        cg.add(var.set_device_info_text_sensor(ts))
 
     if CONF_CONFIG_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_CONFIG_STATUS])

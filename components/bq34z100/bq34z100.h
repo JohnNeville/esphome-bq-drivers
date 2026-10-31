@@ -192,6 +192,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_status_text_sensor(text_sensor::TextSensor *s) { status_text_sensor_ = s; }
   void set_config_status_text_sensor(text_sensor::TextSensor *s) { config_status_text_sensor_ = s; }
   void set_learning_status_text_sensor(text_sensor::TextSensor *s) { learning_status_text_sensor_ = s; }
+  void set_device_info_text_sensor(text_sensor::TextSensor *s) { device_info_text_sensor_ = s; }
   void set_learning_interval(uint32_t ms) { learning_interval_ms_ = ms; }
   void set_qmax_updates_enabled_sensor(binary_sensor::BinarySensor *s) { qmax_updates_enabled_sensor_ = s; }
   void set_voltage_ok_sensor(binary_sensor::BinarySensor *s) { voltage_ok_sensor_ = s; }
@@ -315,6 +316,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   text_sensor::TextSensor *status_text_sensor_{nullptr};
   text_sensor::TextSensor *config_status_text_sensor_{nullptr};
   text_sensor::TextSensor *learning_status_text_sensor_{nullptr};
+  text_sensor::TextSensor *device_info_text_sensor_{nullptr};
   binary_sensor::BinarySensor *config_problem_sensor_{nullptr};
   binary_sensor::BinarySensor *qmax_updates_enabled_sensor_{nullptr};
   binary_sensor::BinarySensor *voltage_ok_sensor_{nullptr};
