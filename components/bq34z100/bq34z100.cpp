@@ -776,10 +776,20 @@ void BQ34Z100Component::read_learning_status_() {
       text = "Unknown";
       break;
   }
-  if (status != this->last_update_status_ || static_cast<int32_t>(qmax) != this->last_qmax_) {
-    ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh", status, text, qmax);
+  // CONTROL_STATUS low byte: QEN (Qmax updates enabled) bit 0, VOK (voltage settled for a Qmax update) bit 1, RUP_DIS (Ra
+  // updates disabled) bit 2. Logged only; -1 when the read fails.
+  uint16_t control = 0;
+  int16_t flags = this->control_read_(CTRL_CONTROL_STATUS, control) ? (control & 0x07) : -1;
+  if (status != this->last_update_status_ || static_cast<int32_t>(qmax) != this->last_qmax_ ||
+      flags != this->last_control_flags_) {
+    if (flags >= 0)
+      ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh, QEN %d VOK %d RUP_DIS %d", status, text, qmax,
+               flags & 1, (flags >> 1) & 1, (flags >> 2) & 1);
+    else
+      ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh", status, text, qmax);
     this->last_update_status_ = status;
     this->last_qmax_ = static_cast<int16_t>(qmax);
+    this->last_control_flags_ = flags;
   }
   if (this->qmax_sensor_ != nullptr)
     this->qmax_sensor_->publish_state(qmax);

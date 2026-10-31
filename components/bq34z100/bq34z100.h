@@ -356,6 +356,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool calibrating_{false};
   int16_t last_update_status_{-1};
   int16_t last_qmax_{-1};
+  int16_t last_control_flags_{-1};
 };
 
 class BQ34Z100CcOffsetButton : public BQ34Z100Child<button::Button> {
