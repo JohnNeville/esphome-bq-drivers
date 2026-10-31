@@ -192,7 +192,11 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_status_text_sensor(text_sensor::TextSensor *s) { status_text_sensor_ = s; }
   void set_config_status_text_sensor(text_sensor::TextSensor *s) { config_status_text_sensor_ = s; }
   void set_learning_status_text_sensor(text_sensor::TextSensor *s) { learning_status_text_sensor_ = s; }
+  void set_device_info_text_sensor(text_sensor::TextSensor *s) { device_info_text_sensor_ = s; }
   void set_learning_interval(uint32_t ms) { learning_interval_ms_ = ms; }
+  void set_qmax_updates_enabled_sensor(binary_sensor::BinarySensor *s) { qmax_updates_enabled_sensor_ = s; }
+  void set_voltage_ok_sensor(binary_sensor::BinarySensor *s) { voltage_ok_sensor_ = s; }
+  void set_ra_updates_disabled_sensor(binary_sensor::BinarySensor *s) { ra_updates_disabled_sensor_ = s; }
   void set_config_problem_sensor(binary_sensor::BinarySensor *s) { config_problem_sensor_ = s; }
 
   void set_cc_offset_button(BQ34Z100CcOffsetButton *b) { cc_offset_button_ = b; }
@@ -312,7 +316,11 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   text_sensor::TextSensor *status_text_sensor_{nullptr};
   text_sensor::TextSensor *config_status_text_sensor_{nullptr};
   text_sensor::TextSensor *learning_status_text_sensor_{nullptr};
+  text_sensor::TextSensor *device_info_text_sensor_{nullptr};
   binary_sensor::BinarySensor *config_problem_sensor_{nullptr};
+  binary_sensor::BinarySensor *qmax_updates_enabled_sensor_{nullptr};
+  binary_sensor::BinarySensor *voltage_ok_sensor_{nullptr};
+  binary_sensor::BinarySensor *ra_updates_disabled_sensor_{nullptr};
 
   BQ34Z100CcOffsetButton *cc_offset_button_{nullptr};
   BQ34Z100BoardOffsetButton *board_offset_button_{nullptr};
@@ -356,6 +364,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool calibrating_{false};
   int16_t last_update_status_{-1};
   int16_t last_qmax_{-1};
+  int16_t last_control_flags_{-1};
 };
 
 class BQ34Z100CcOffsetButton : public BQ34Z100Child<button::Button> {

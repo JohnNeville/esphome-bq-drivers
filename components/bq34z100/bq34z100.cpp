@@ -690,6 +690,22 @@ void BQ34Z100Component::setup() {
     ESP_LOGW(TAG, "DEVICE_TYPE reported 0x%04X, expected 0x%04X", device_type, DEVICE_TYPE_BQ34Z100);
   }
 
+  // Firmware, hardware and data flash versions, to tell which gauge firmware build the pack is running.
+  uint16_t fw_version = 0, hw_version = 0, df_version = 0;
+  bool fw_ok = this->control_read_(CTRL_FW_VERSION, fw_version);
+  bool hw_ok = this->control_read_(CTRL_HW_VERSION, hw_version);
+  bool df_ok = this->control_read_(CTRL_DF_VERSION, df_version);
+  uint16_t chem_checksum = 0;
+  this->control_read_(CTRL_STATIC_CHEM_CHKSUM, chem_checksum);
+  if (fw_ok || hw_ok || df_ok) {
+    char info[96];
+    snprintf(info, sizeof(info), "FW 0x%04X, HW 0x%04X, DF 0x%04X, type 0x%04X, chem checksum 0x%04X", fw_version,
+             hw_version, df_version, device_type, chem_checksum);
+    ESP_LOGI(TAG, "Gauge versions: %s", info);
+    if (this->device_info_text_sensor_ != nullptr)
+      this->device_info_text_sensor_->publish_state(info);
+  }
+
   uint16_t chem_id;
   if (this->control_read_(CTRL_CHEM_ID, chem_id)) {
     this->chem_id_ = chem_id;
@@ -721,7 +737,8 @@ void BQ34Z100Component::setup() {
   this->setup_ok_ = true;
 
   if (this->qmax_sensor_ != nullptr || this->update_status_sensor_ != nullptr ||
-      this->learning_status_text_sensor_ != nullptr) {
+      this->learning_status_text_sensor_ != nullptr || this->qmax_updates_enabled_sensor_ != nullptr ||
+      this->voltage_ok_sensor_ != nullptr || this->ra_updates_disabled_sensor_ != nullptr) {
     this->set_timeout("learning_first", 15000, [this]() { this->read_learning_status_(); });
     this->set_interval("learning", this->learning_interval_ms_, [this]() { this->read_learning_status_(); });
   }
@@ -776,10 +793,28 @@ void BQ34Z100Component::read_learning_status_() {
       text = "Unknown";
       break;
   }
-  if (status != this->last_update_status_ || static_cast<int32_t>(qmax) != this->last_qmax_) {
-    ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh", status, text, qmax);
+  // CONTROL_STATUS low byte: QEN (Qmax updates enabled) bit 0, VOK (voltage settled for a Qmax update) bit 1, RUP_DIS (Ra
+  // updates disabled) bit 2. Logged only; -1 when the read fails.
+  uint16_t control = 0;
+  int16_t flags = this->control_read_(CTRL_CONTROL_STATUS, control) ? (control & 0x07) : -1;
+  if (status != this->last_update_status_ || static_cast<int32_t>(qmax) != this->last_qmax_ ||
+      flags != this->last_control_flags_) {
+    if (flags >= 0)
+      ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh, QEN %d VOK %d RUP_DIS %d", status, text, qmax,
+               flags & 1, (flags >> 1) & 1, (flags >> 2) & 1);
+    else
+      ESP_LOGI(TAG, "Learning: Update Status 0x%02X (%s), Qmax %u mAh", status, text, qmax);
     this->last_update_status_ = status;
     this->last_qmax_ = static_cast<int16_t>(qmax);
+    this->last_control_flags_ = flags;
+  }
+  if (flags >= 0) {
+    if (this->qmax_updates_enabled_sensor_ != nullptr)
+      this->qmax_updates_enabled_sensor_->publish_state(flags & 1);
+    if (this->voltage_ok_sensor_ != nullptr)
+      this->voltage_ok_sensor_->publish_state((flags >> 1) & 1);
+    if (this->ra_updates_disabled_sensor_ != nullptr)
+      this->ra_updates_disabled_sensor_->publish_state((flags >> 2) & 1);
   }
   if (this->qmax_sensor_ != nullptr)
     this->qmax_sensor_->publish_state(qmax);

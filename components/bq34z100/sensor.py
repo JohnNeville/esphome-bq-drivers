@@ -104,6 +104,10 @@ CONF_STATUS = "status"
 CONF_CONFIG_STATUS = "config_status"
 CONF_CONFIG_PROBLEM = "config_problem"
 CONF_LEARNING_STATUS = "learning_status"
+CONF_DEVICE_INFO = "device_info"
+CONF_QMAX_UPDATES_ENABLED = "qmax_updates_enabled"
+CONF_VOLTAGE_OK = "voltage_ok"
+CONF_RA_UPDATES_DISABLED = "ra_updates_disabled"
 
 # Buttons
 CONF_CC_OFFSET_CALIBRATION = "cc_offset_calibration"
@@ -309,9 +313,27 @@ CONFIG_SCHEMA = cv.All(
                 icon="mdi:clipboard-check-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
+            # Gauge firmware, hardware and data flash version words, read once at boot.
+            cv.Optional(CONF_DEVICE_INFO): text_sensor.text_sensor_schema(
+                icon="mdi:chip",
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
             cv.Optional(CONF_LEARNING_STATUS): text_sensor.text_sensor_schema(
                 icon="mdi:school-outline",
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            # CONTROL_STATUS bits QEN, VOK and RUP_DIS, read with the learning status.
+            cv.Optional(CONF_QMAX_UPDATES_ENABLED): binary_sensor.binary_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:school-outline",
+            ),
+            cv.Optional(CONF_VOLTAGE_OK): binary_sensor.binary_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:sine-wave",
+            ),
+            cv.Optional(CONF_RA_UPDATES_DISABLED): binary_sensor.binary_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:school-outline",
             ),
             cv.Optional(CONF_CONFIG_PROBLEM): binary_sensor.binary_sensor_schema(
                 device_class="problem",
@@ -386,6 +408,9 @@ BINARY_SENSOR_SETTERS = {
     CONF_BATTERY_HIGH: "set_battery_high_sensor",
     CONF_BATTERY_LOW: "set_battery_low_sensor",
     CONF_OVER_TEMPERATURE: "set_over_temperature_sensor",
+    CONF_QMAX_UPDATES_ENABLED: "set_qmax_updates_enabled_sensor",
+    CONF_VOLTAGE_OK: "set_voltage_ok_sensor",
+    CONF_RA_UPDATES_DISABLED: "set_ra_updates_disabled_sensor",
 }
 
 BUTTON_SETTERS = {
@@ -455,6 +480,10 @@ async def to_code(config):
     if CONF_LEARNING_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_LEARNING_STATUS])
         cg.add(var.set_learning_status_text_sensor(ts))
+
+    if CONF_DEVICE_INFO in config:
+        ts = await text_sensor.new_text_sensor(config[CONF_DEVICE_INFO])
+        cg.add(var.set_device_info_text_sensor(ts))
 
     if CONF_CONFIG_STATUS in config:
         ts = await text_sensor.new_text_sensor(config[CONF_CONFIG_STATUS])
