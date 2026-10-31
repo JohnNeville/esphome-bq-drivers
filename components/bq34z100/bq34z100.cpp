@@ -721,7 +721,8 @@ void BQ34Z100Component::setup() {
   this->setup_ok_ = true;
 
   if (this->qmax_sensor_ != nullptr || this->update_status_sensor_ != nullptr ||
-      this->learning_status_text_sensor_ != nullptr) {
+      this->learning_status_text_sensor_ != nullptr || this->qmax_updates_enabled_sensor_ != nullptr ||
+      this->voltage_ok_sensor_ != nullptr || this->ra_updates_disabled_sensor_ != nullptr) {
     this->set_timeout("learning_first", 15000, [this]() { this->read_learning_status_(); });
     this->set_interval("learning", this->learning_interval_ms_, [this]() { this->read_learning_status_(); });
   }
@@ -790,6 +791,14 @@ void BQ34Z100Component::read_learning_status_() {
     this->last_update_status_ = status;
     this->last_qmax_ = static_cast<int16_t>(qmax);
     this->last_control_flags_ = flags;
+  }
+  if (flags >= 0) {
+    if (this->qmax_updates_enabled_sensor_ != nullptr)
+      this->qmax_updates_enabled_sensor_->publish_state(flags & 1);
+    if (this->voltage_ok_sensor_ != nullptr)
+      this->voltage_ok_sensor_->publish_state((flags >> 1) & 1);
+    if (this->ra_updates_disabled_sensor_ != nullptr)
+      this->ra_updates_disabled_sensor_->publish_state((flags >> 2) & 1);
   }
   if (this->qmax_sensor_ != nullptr)
     this->qmax_sensor_->publish_state(qmax);
