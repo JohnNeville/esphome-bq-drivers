@@ -303,7 +303,8 @@ void BQ34Z100Component::apply_configuration_() {
     uint8_t state[1];
     if (!this->read_flash_bytes_(SUBCLASS_STATE, OFFSET_UPDATE_STATUS, state, 1)) {
       ESP_LOGW(TAG, "Could not read Update Status; Qmax left alone");
-    } else if (state[0] >= 0x05) {
+    } else if (state[0] >= 0x05 || state[0] == 0x02) {
+      // 0x02 is a golden image (Qmax and Ra learned, Impedance Track off; TI SLUA903): its Qmax is learned too.
       ESP_LOGI(TAG, "Update Status 0x%02X: Qmax is already learned, not overwriting it", state[0]);
     } else {
       write_word(SUBCLASS_STATE, OFFSET_QMAX, this->initial_qmax_);
