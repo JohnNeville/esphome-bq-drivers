@@ -735,6 +735,7 @@ void BQ34Z100Component::setup() {
   }
 
   this->evaluate_config_();
+  this->init_soc_verified_();
   this->setup_ok_ = true;
 
   if (this->qmax_sensor_ != nullptr || this->update_status_sensor_ != nullptr ||
@@ -910,9 +911,63 @@ void BQ34Z100Component::update() {
       if (flags & FLAG_SOCF) append("Critical charge");
       else if (flags & FLAG_SOC1) append("Low charge");
       if (discharging) append("Discharging");
+      this->track_soc_verified_(flags);
+      if (!this->soc_verified_) append("Level unverified until full charge");
       this->status_text_sensor_->publish_state(status.empty() ? "Idle" : status);
     }
   }
+}
+
+void BQ34Z100Component::init_soc_verified_() {
+  if (this->status_text_sensor_ == nullptr)
+    return;
+  this->soc_pref_ = global_preferences->make_preference<SocVerifiedState>(fnv1_hash("bq34z100_soc_verified") ^ this->address_);
+  uint16_t reset_data;
+  if (!this->control_read_(CTRL_RESET_DATA, reset_data)) {
+    ESP_LOGW(TAG, "Could not read RESET_DATA; level shown as unverified until the next full charge");
+    return;
+  }
+  this->last_reset_data_ = reset_data;
+  this->have_reset_data_ = true;
+  SocVerifiedState stored{};
+  if (this->soc_pref_.load(&stored) && stored.reset_data == reset_data) {
+    this->soc_verified_ = stored.verified != 0;
+  } else {
+    this->soc_verified_ = false;
+    if (this->soc_pref_.load(&stored))
+      ESP_LOGW(TAG, "Gauge reset since the last boot (RESET_DATA 0x%04X -> 0x%04X): level unverified until the next full charge",
+               stored.reset_data, reset_data);
+    this->save_soc_verified_();
+  }
+  ESP_LOGD(TAG, "RESET_DATA 0x%04X, level %s", reset_data, this->soc_verified_ ? "verified" : "unverified");
+}
+
+void BQ34Z100Component::track_soc_verified_(uint16_t flags) {
+  uint16_t reset_data;
+  if (this->control_read_(CTRL_RESET_DATA, reset_data)) {
+    if (this->have_reset_data_ && reset_data != this->last_reset_data_) {
+      ESP_LOGW(TAG, "Gauge reset (RESET_DATA 0x%04X -> 0x%04X): level unverified until the next full charge",
+               this->last_reset_data_, reset_data);
+      this->soc_verified_ = false;
+    }
+    bool changed = !this->have_reset_data_ || reset_data != this->last_reset_data_;
+    this->last_reset_data_ = reset_data;
+    this->have_reset_data_ = true;
+    if (changed)
+      this->save_soc_verified_();
+  }
+  if ((flags & FLAG_FC) && !this->soc_verified_ && this->have_reset_data_) {
+    ESP_LOGI(TAG, "Full charge seen: level verified");
+    this->soc_verified_ = true;
+    this->save_soc_verified_();
+  }
+}
+
+void BQ34Z100Component::save_soc_verified_() {
+  if (!this->have_reset_data_)
+    return;
+  SocVerifiedState state{this->last_reset_data_, static_cast<uint8_t>(this->soc_verified_ ? 1 : 0)};
+  this->soc_pref_.save(&state);
 }
 
 void BQ34Z100Component::dump_config() {

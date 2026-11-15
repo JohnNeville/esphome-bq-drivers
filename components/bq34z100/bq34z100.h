@@ -8,6 +8,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/button/button.h"
 #include "esphome/core/log.h"
+#include "esphome/core/preferences.h"
 
 namespace esphome {
 namespace bq34z100 {
@@ -52,6 +53,7 @@ static const uint8_t CMD_BLOCK_DATA_CONTROL = 0x61;
 static const uint16_t CTRL_CONTROL_STATUS = 0x0000;
 static const uint16_t CTRL_DEVICE_TYPE = 0x0001;
 static const uint16_t CTRL_FW_VERSION = 0x0002;
+static const uint16_t CTRL_RESET_DATA = 0x0005;  // counts gauge resets (power loss, RESET command)
 static const uint16_t CTRL_HW_VERSION = 0x0003;
 static const uint16_t CTRL_CHEM_ID = 0x0008;
 static const uint16_t CTRL_BOARD_OFFSET = 0x0009;
@@ -352,6 +354,21 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   bool chem_id_read_{false};
   bool applied_{false};  // data flash was written (or confirmed) this boot
   bool setup_ok_{false};
+
+  // State of charge is "verified" once the gauge has seen a full charge (FC) since its last reset. A reset (RESET_DATA changes, e.g.
+  // the gauge lost power in ship mode when FG_PWR feeds it from 3V3_SYS) restarts SOC from one OCV reading, which on a flat
+  // LiFePO4 curve can be far off. Kept in flash so an ESP reboot does not clear it. Internal only: shown in the status text.
+  struct SocVerifiedState {
+    uint16_t reset_data;
+    uint8_t verified;
+  } __attribute__((packed));
+  ESPPreferenceObject soc_pref_;
+  uint16_t last_reset_data_{0};
+  bool have_reset_data_{false};
+  bool soc_verified_{false};
+  void init_soc_verified_();
+  void track_soc_verified_(uint16_t flags);
+  void save_soc_verified_();
 
   // Impedance Track learning progress (data flash subclass 82) and the calibration routines, which run for
   // several seconds, so they are polled with timeouts instead of blocking the main loop.
