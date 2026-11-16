@@ -516,10 +516,13 @@ CONFIG_SCHEMA = cv.All(
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
             ),
             # --- Switches ---
+            # Keeps the user's choice across reboots and power loss; a new board starts with charging off, so a pack is
+            # not charged before the cell type has been set.
             cv.Optional(CONF_ENABLE_CHARGING): switch.switch_schema(
                 BQ25798ChargingSwitch,
                 icon=ICON_FLASH,
                 entity_category=ENTITY_CATEGORY_CONFIG,
+                default_restore_mode="RESTORE_DEFAULT_OFF",
             ),
             cv.Optional(CONF_ENABLE_HIZ): switch.switch_schema(
                 BQ25798HizSwitch,
