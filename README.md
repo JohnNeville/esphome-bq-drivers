@@ -364,6 +364,14 @@ and diagnostic.
   that need no unseal, so it never changes the gauge. The state is worked out at boot and again
   after each write.
 
+### Level unverified until full charge
+
+The `status` text sensor adds **"Level unverified until full charge"** after the gauge has reset (its `RESET_DATA` counter
+changed, for example after a power loss or ship mode on a board that powers the gauge from the system rail) until it next
+sets FC. After a reset the gauge restarts its state of charge from a single voltage reading, which on a flat LiFePO4 curve
+can be tens of percent off; a full charge re-anchors it. The flag is kept in flash, so an ESP reboot does not clear it, and
+a gauge reset while the ESP was off is caught at the next boot. It needs `status` to be configured.
+
 ### Alert pin
 
 The gauge ships with its Alert Configuration register at 0, so the `ALERT` pin never goes
