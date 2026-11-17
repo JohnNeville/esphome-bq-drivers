@@ -827,8 +827,10 @@ void BQ25798Component::publish_control_states_() {
   this->limit_min_sys_voltage_();
   uint8_t ctrl0, ctrl3, ctrl4, mppt;
   if (this->read_u8_(REG0F_CHG_CTRL0, ctrl0)) {
+    // The switch shows the user's choice, not EN_CHG: a temperature hold or a charger reset changes the register, and
+    // publishing that would save it as the choice and restore it at the next boot.
     if (this->charging_switch_ != nullptr)
-      this->charging_switch_->publish_state((ctrl0 & 0x20) != 0);
+      this->charging_switch_->publish_state(this->want_en_chg_ >= 0 ? this->want_en_chg_ != 0 : (ctrl0 & 0x20) != 0);
     if (this->hiz_switch_ != nullptr)
       this->hiz_switch_->publish_state((ctrl0 & 0x04) != 0);
     if (this->ico_switch_ != nullptr)

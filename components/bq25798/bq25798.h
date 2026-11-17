@@ -448,6 +448,20 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
 
 class BQ25798ChargingSwitch : public BQ25798Child<switch_::Switch> {
  public:
+  // Apply restore_mode at boot, as for the MPPT switch: ESPHome only restores a switch's state for components that ask
+  // for it. Without this the switch mirrored EN_CHG, and a charger power-on reset (power loss, ship mode, charger
+  // power cycle) brought charging back on whatever the user had chosen. The switch now holds the user's choice; a
+  // temperature hold clears EN_CHG without changing it.
+  void setup() override {
+    auto initial = this->get_initial_state_with_restore_mode();
+    if (!initial.has_value())
+      return;
+    if (*initial)
+      this->turn_on();
+    else
+      this->turn_off();
+  }
+
   void write_state(bool state) override {
     if (this->parent_->enable_charging(state))
       this->publish_state(state);
