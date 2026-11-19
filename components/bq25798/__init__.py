@@ -837,6 +837,9 @@ CONF_CHARGE_CURRENT_MA = "charge_current"
                 cv.int_range(min=50, max=5000)
             ),
             cv.Optional(CONF_TS_IGNORE): cv.templatable(cv.boolean),
+            # Per cell, in volts. It can only lower the limit the chemistry sets, by up to 0.30 V; see
+            # configure_battery in bq25798.cpp. A value outside that is ignored with a warning.
+            cv.Optional(CONF_CELL_VOLTAGE): cv.templatable(cv.float_range(min=3.0, max=4.7)),
         }
     ),
     synchronous=True,
@@ -856,4 +859,7 @@ async def bq25798_configure_battery_to_code(config, action_id, template_arg, arg
     if CONF_TS_IGNORE in config:
         template_ = await cg.templatable(config[CONF_TS_IGNORE], args, bool)
         cg.add(var.set_ts_ignore(template_))
+    if CONF_CELL_VOLTAGE in config:
+        template_ = await cg.templatable(config[CONF_CELL_VOLTAGE], args, cg.float_)
+        cg.add(var.set_cell_voltage(template_))
     return var

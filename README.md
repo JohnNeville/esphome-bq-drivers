@@ -73,12 +73,18 @@ chemistry in. All three options are optional and templatable:
     battery_capacity: 2000     # mAh, sets the C/10 termination current
     charge_current: 500        # mA, the default restored after a reset
     ts_ignore: false           # true sets TS_IGNORE: see below
+    cell_voltage: 3.6          # V per cell, optional: only ever lowers the limit, see below
 ```
 
-The chemistry still sets the charge voltage limit and nothing else does: the action takes a
-name from the table above, never a voltage, and an unknown name changes nothing and logs an
-error. The new values are kept, so a register reset or a watchdog expiry reapplies them
-rather than the YAML ones.
+The chemistry still sets the charge voltage limit: the action takes a name from the table
+above, and an unknown name changes nothing and logs an error. The new values are kept, so a
+register reset or a watchdog expiry reapplies them rather than the YAML ones.
+
+`cell_voltage` lets the owner of a cell with a lower data-sheet limit than the chemistry's
+standard (a 3.6 V LiFePO4 cell, for example) charge to that. It can only **lower** the limit,
+and by at most 0.30 V: the chemistry's standard is a ceiling, so a mistake cannot overcharge a
+cell. A value above the standard, or more than 0.30 V under it, is ignored with a warning and
+the chemistry's standard is used. It needs `chemistry` to be checked against.
 
 `ts_ignore` sets or clears the charger's `TS_IGNORE` bit at run time, so a device can let its
 owner say whether a thermistor is fitted. Setting it turns off the charger's battery-temperature
