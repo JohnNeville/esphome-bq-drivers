@@ -226,7 +226,8 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // ts_ignore is 1 to set TS_IGNORE, 0 to clear it and -1 to leave it as it is. Setting it turns off the
   // charger's battery-temperature protection, so it is only for a pack with no thermistor behind the
   // TS pin; with an open TS divider the charger reads "too cold" and never charges.
-  bool configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma, int ts_ignore = -1);
+  bool configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma, int ts_ignore = -1,
+                         float cell_voltage = NAN);
   // Hard ceiling applied to every charge-current write, including the one
   // restored at boot. Boards whose copper is rated below the IC's 5 A must
   // set this; see the SunSprout hub, which is limited to 2000 mA.
@@ -630,13 +631,15 @@ template<typename... Ts> class ConfigureBatteryAction : public Action<Ts...> {
   TEMPLATABLE_VALUE(uint16_t, battery_capacity)
   TEMPLATABLE_VALUE(uint16_t, charge_current)
   TEMPLATABLE_VALUE(bool, ts_ignore)
+  TEMPLATABLE_VALUE(float, cell_voltage)
 
   void play(Ts... x) override {
     std::string chemistry = this->chemistry_.has_value() ? this->chemistry_.value(x...) : std::string();
     int capacity = this->battery_capacity_.has_value() ? this->battery_capacity_.value(x...) : 0;
     int current = this->charge_current_.has_value() ? this->charge_current_.value(x...) : 0;
     int ts_ignore = this->ts_ignore_.has_value() ? (this->ts_ignore_.value(x...) ? 1 : 0) : -1;
-    this->parent_->configure_battery(chemistry, capacity, current, ts_ignore);
+    float cell_voltage = this->cell_voltage_.has_value() ? this->cell_voltage_.value(x...) : NAN;
+    this->parent_->configure_battery(chemistry, capacity, current, ts_ignore, cell_voltage);
   }
 
  protected:

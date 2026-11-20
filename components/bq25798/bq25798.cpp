@@ -387,8 +387,12 @@ static float chemistry_cell_voltage(const std::string &name) {
   return NAN;
 }
 
+// A cell charge voltage below the chemistry's standard is allowed down to this far under it: a cell with a lower data-sheet
+// limit (a 3.6 V LiFePO4 cell, say) is charged to it, while a value that far off is more likely a mistake than a limit.
+static constexpr float CELL_VOLTAGE_MAX_DROP_V = 0.30f;
+
 bool BQ25798Component::configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma,
-                                         int ts_ignore) {
+                                         int ts_ignore, float cell_voltage) {
   float limit = this->charge_voltage_limit_;
   if (!chemistry.empty()) {
     float per_cell = chemistry_cell_voltage(chemistry);
@@ -396,7 +400,19 @@ bool BQ25798Component::configure_battery(const std::string &chemistry, int capac
       ESP_LOGE(TAG, "Unknown chemistry '%s': battery settings left as they were", chemistry.c_str());
       return false;
     }
+    // A cell voltage can only lower the limit, never raise it past what the chemistry allows, because a limit that
+    // protects the cell must not be something that can be set too high. Outside the allowed window it is ignored.
+    if (!std::isnan(cell_voltage)) {
+      if (cell_voltage <= per_cell + 0.001f && cell_voltage >= per_cell - CELL_VOLTAGE_MAX_DROP_V - 0.001f) {
+        per_cell = cell_voltage;
+      } else {
+        ESP_LOGW(TAG, "Cell charge voltage %.2f V is outside %.2f to %.2f V for '%s': using %.2f V", cell_voltage,
+                 per_cell - CELL_VOLTAGE_MAX_DROP_V, per_cell, chemistry.c_str(), per_cell);
+      }
+    }
     limit = per_cell * this->cell_count_;
+  } else if (!std::isnan(cell_voltage)) {
+    ESP_LOGW(TAG, "A cell charge voltage needs a chemistry to be checked against: ignored");
   }
   if (this->is_failed()) {
     ESP_LOGW(TAG, "The charger did not start, so the battery settings were not applied");

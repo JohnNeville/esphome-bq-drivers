@@ -161,6 +161,14 @@ interval:
           charge_current: !lambda 'return 1000;'
       - bq25798.configure_battery:
           id: charger_test
+          chemistry: lifepo4
+          cell_voltage: 3.6
+      - bq25798.configure_battery:
+          id: charger_test
+          chemistry: li_ion
+          cell_voltage: !lambda 'return 4.1f;'
+      - bq25798.configure_battery:
+          id: charger_test
           charge_current: 750
       - bq25798.configure_battery:
           id: charger_test
