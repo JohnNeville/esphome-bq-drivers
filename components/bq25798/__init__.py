@@ -837,8 +837,8 @@ CONF_CHARGE_CURRENT_MA = "charge_current"
                 cv.int_range(min=50, max=5000)
             ),
             cv.Optional(CONF_TS_IGNORE): cv.templatable(cv.boolean),
-            # Per cell, in volts. It can only lower the limit the chemistry sets, by up to 0.30 V; see
-            # configure_battery in bq25798.cpp. A value outside that is ignored with a warning.
+            # Per cell, in volts. It can only lower the limit the chemistry sets: a value above it is ignored with a warning, a lower one
+            # is kept (with a warning when it is more than 0.30 V under); see configure_battery in bq25798.cpp.
             cv.Optional(CONF_CELL_VOLTAGE): cv.templatable(cv.float_range(min=3.0, max=4.7)),
         }
     ),

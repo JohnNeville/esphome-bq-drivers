@@ -81,10 +81,11 @@ above, and an unknown name changes nothing and logs an error. The new values are
 register reset or a watchdog expiry reapplies them rather than the YAML ones.
 
 `cell_voltage` lets the owner of a cell with a lower data-sheet limit than the chemistry's
-standard (a 3.6 V LiFePO4 cell, for example) charge to that. It can only **lower** the limit,
-and by at most 0.30 V: the chemistry's standard is a ceiling, so a mistake cannot overcharge a
-cell. A value above the standard, or more than 0.30 V under it, is ignored with a warning and
-the chemistry's standard is used. It needs `chemistry` to be checked against.
+standard (a 3.6 V LiFePO4 cell, for example) charge to that. It can only **lower** the limit:
+the chemistry's standard is a ceiling, so a mistake cannot overcharge a cell. A value above the
+standard is ignored with a warning and the standard is used. A lower value is always the safe
+direction, so it is kept, and logged as a warning when it is more than 0.30 V under the standard
+(the cell then stores much less energy). It needs `chemistry` to be checked against.
 
 `ts_ignore` sets or clears the charger's `TS_IGNORE` bit at run time, so a device can let its
 owner say whether a thermistor is fitted. Setting it turns off the charger's battery-temperature

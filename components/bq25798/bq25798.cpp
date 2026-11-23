@@ -387,9 +387,10 @@ static float chemistry_cell_voltage(const std::string &name) {
   return NAN;
 }
 
-// A cell charge voltage below the chemistry's standard is allowed down to this far under it: a cell with a lower data-sheet
-// limit (a 3.6 V LiFePO4 cell, say) is charged to it, while a value that far off is more likely a mistake than a limit.
-static constexpr float CELL_VOLTAGE_MAX_DROP_V = 0.30f;
+// A cell charge voltage may be any value up to the chemistry's standard: a cell with a lower data-sheet limit (a 3.6 V LiFePO4 cell,
+// say) is charged to it. Lower is always the safe direction, so a low value is kept and only logged when it is this far under the
+// standard, because it then stores much less energy and is more likely a mistake than a limit.
+static constexpr float CELL_VOLTAGE_UNUSUALLY_LOW_V = 0.30f;
 
 bool BQ25798Component::configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma,
                                          int ts_ignore, float cell_voltage) {
@@ -401,13 +402,17 @@ bool BQ25798Component::configure_battery(const std::string &chemistry, int capac
       return false;
     }
     // A cell voltage can only lower the limit, never raise it past what the chemistry allows, because a limit that
-    // protects the cell must not be something that can be set too high. Outside the allowed window it is ignored.
+    // protects the cell must not be something that can be set too high. A value above the standard is ignored; a lower one is kept.
     if (!std::isnan(cell_voltage)) {
-      if (cell_voltage <= per_cell + 0.001f && cell_voltage >= per_cell - CELL_VOLTAGE_MAX_DROP_V - 0.001f) {
-        per_cell = cell_voltage;
+      if (cell_voltage > per_cell + 0.001f) {
+        ESP_LOGW(TAG, "Cell charge voltage %.2f V is above the %.2f V standard for '%s': using %.2f V", cell_voltage, per_cell,
+                 chemistry.c_str(), per_cell);
       } else {
-        ESP_LOGW(TAG, "Cell charge voltage %.2f V is outside %.2f to %.2f V for '%s': using %.2f V", cell_voltage,
-                 per_cell - CELL_VOLTAGE_MAX_DROP_V, per_cell, chemistry.c_str(), per_cell);
+        if (cell_voltage < per_cell - CELL_VOLTAGE_UNUSUALLY_LOW_V - 0.001f) {
+          ESP_LOGW(TAG, "Cell charge voltage %.2f V is more than %.2f V under the %.2f V standard for '%s': the cell will charge to it", cell_voltage,
+                   CELL_VOLTAGE_UNUSUALLY_LOW_V, per_cell, chemistry.c_str());
+        }
+        per_cell = cell_voltage;
       }
     }
     limit = per_cell * this->cell_count_;
