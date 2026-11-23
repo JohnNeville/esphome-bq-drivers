@@ -295,6 +295,39 @@ void BQ34Z100Component::apply_configuration_() {
   }
   if (this->terminate_voltage_ >= 0)
     write_word(SUBCLASS_IT_CFG, OFFSET_CELL_TERMINATE_VOLTAGE, this->terminate_voltage_);
+  // Charge termination. A LiFePO4 pack's charger cut-off sits close to the gauge's taper threshold, so with the stock
+  // values the gauge never sees the taper and never sets FC (the charger ends the charge first). These are the values
+  // proven on the .175 (2026-11-15): FC sets 40 s after the current falls under 150 mA, well before the charger stops.
+  // They apply when lifepo4_relax is on, and each can still be set explicitly.
+  int16_t taper_current = this->taper_current_;
+  int16_t taper_window = this->taper_window_;
+  int16_t chg_threshold = this->chg_current_threshold_;
+  int16_t fc_set = this->fc_set_;
+  bool fc_set_declared = this->fc_set_declared_;
+  if (this->lifepo4_relax_) {
+    if (taper_current < 0)
+      taper_current = LIFEPO4_TAPER_CURRENT_MA;
+    if (taper_window < 0)
+      taper_window = LIFEPO4_TAPER_WINDOW_S;
+    if (chg_threshold < 0)
+      chg_threshold = LIFEPO4_CHG_CURRENT_THRESHOLD_MA;
+    if (!fc_set_declared) {
+      fc_set = -1;
+      fc_set_declared = true;
+    }
+  }
+  if (taper_current >= 0)
+    write_word(SUBCLASS_CHARGE_TERMINATION, OFFSET_TAPER_CURRENT, taper_current);
+  if (taper_window >= 0) {
+    uint8_t buf[1] = {static_cast<uint8_t>(taper_window)};
+    this->update_flash_bytes_(SUBCLASS_CHARGE_TERMINATION, OFFSET_TAPER_WINDOW, buf, 1);
+  }
+  if (fc_set_declared) {
+    uint8_t buf[1] = {static_cast<uint8_t>(static_cast<int8_t>(fc_set))};
+    this->update_flash_bytes_(SUBCLASS_CHARGE_TERMINATION, OFFSET_FC_SET, buf, 1);
+  }
+  if (chg_threshold >= 0)
+    write_word(SUBCLASS_CURRENT_THRESHOLDS, OFFSET_CHG_CURRENT_THRESHOLD, chg_threshold);
   if (this->battery_high_voltage_ >= 0) {
     write_word(SUBCLASS_DISCHARGE, OFFSET_CELL_BH_SET_VOLT, this->battery_high_voltage_);
     write_word(SUBCLASS_DISCHARGE, OFFSET_CELL_BH_CLEAR_VOLT, this->battery_high_voltage_ - 100);
@@ -329,7 +362,8 @@ bool BQ34Z100Component::pack_declared_() const {
   return this->design_capacity_ >= 0 || this->cell_count_ > 0 || this->sense_resistor_ > 0.0f ||
          this->voltage_divider_ > 0 || this->alert_configuration_set_ || this->initial_qmax_ >= 0 ||
          this->cell_charge_voltage_ >= 0 || this->cell_charge_voltage_hot_ >= 0 || this->terminate_voltage_ >= 0 ||
-         this->battery_high_voltage_ >= 0;
+         this->battery_high_voltage_ >= 0 || this->taper_current_ >= 0 || this->taper_window_ >= 0 ||
+         this->chg_current_threshold_ >= 0 || this->fc_set_declared_;
 }
 
 // Works out whether the gauge matches what the YAML declares, using only reads that need no

@@ -184,12 +184,14 @@ void BQ25798Component::apply_battery_settings_() {
 
   // Derive the termination current as C/10 when the pack size is known.
   if (this->battery_capacity_ > 0) {
-    uint16_t iterm_ma = this->battery_capacity_ / 10;
+    // LiFePO4 holds a flat voltage until nearly full, so the C/10 cut-off arrives while the gauge still reads a middling charge
+    // and never sees its taper current. The minimum (40 mA) leaves the gauge's 150 mA taper threshold well ahead of the cut-off.
+    uint16_t iterm_ma = this->lifepo4_ ? ITERM_MIN_MA : this->battery_capacity_ / 10;
     iterm_ma = clamp<uint16_t>(iterm_ma, ITERM_MIN_MA, ITERM_MAX_MA);
     uint8_t code = static_cast<uint8_t>(iterm_ma / static_cast<uint16_t>(ITERM_STEP_MA));
     this->want_iterm_code_ = code;
     this->modify_u8_(REG09_TERM, 0x1F, code);
-    ESP_LOGD(TAG, "Termination current set to %u mA (C/10 of %u mAh)", iterm_ma, this->battery_capacity_);
+    ESP_LOGD(TAG, "Termination current set to %u mA (%s, %u mAh)", iterm_ma, this->lifepo4_ ? "LiFePO4 minimum" : "C/10", this->battery_capacity_);
   }
 }
 
@@ -401,6 +403,7 @@ bool BQ25798Component::configure_battery(const std::string &chemistry, int capac
       ESP_LOGE(TAG, "Unknown chemistry '%s': battery settings left as they were", chemistry.c_str());
       return false;
     }
+    this->lifepo4_ = chemistry == "lifepo4";
     // A cell voltage can only lower the limit, never raise it past what the chemistry allows, because a limit that
     // protects the cell must not be something that can be set too high. A value above the standard is ignored; a lower one is kept.
     if (!std::isnan(cell_voltage)) {

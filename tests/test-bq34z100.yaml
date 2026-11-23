@@ -37,6 +37,10 @@ sensor:
     voltage_divider: 5000
     external_thermistor: true
     lifepo4_relax: true
+    taper_current: 150
+    taper_window: 20
+    chg_current_threshold: 50
+    fc_set: -1
     expected_chem_id: 0x0402
     alert_configuration: [low_charge, critical_charge, discharging]
 
