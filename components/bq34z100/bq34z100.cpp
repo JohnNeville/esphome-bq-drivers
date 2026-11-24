@@ -397,7 +397,8 @@ void BQ34Z100Component::evaluate_config_() {
     this->config_status_text_sensor_->publish_state(problems.empty() ? "OK" : problems);
 }
 
-bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax, int external_thermistor) {
+bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int relax, int external_thermistor,
+                                       int taper_current_ma) {
   if (capacity_mah >= 0)
     this->design_capacity_ = static_cast<int16_t>(clamp<int>(capacity_mah, 0, 32767));
   if (energy_mwh >= 0) {
@@ -407,6 +408,9 @@ bool BQ34Z100Component::configure_pack(int capacity_mah, int energy_mwh, int rel
   }
   if (external_thermistor >= 0)
     this->external_thermistor_ = external_thermistor == 1;
+  // The current the charge must taper below (mA); it has to sit above the charger's termination current for FC to set first.
+  if (taper_current_ma > 0)
+    this->taper_current_ = static_cast<int16_t>(clamp<int>(taper_current_ma, 1, 2000));
   if (relax == 1) {
     this->lifepo4_relax_ = true;
     this->lifepo4_relax_clear_ = false;

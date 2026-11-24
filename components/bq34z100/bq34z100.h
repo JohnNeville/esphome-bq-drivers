@@ -251,7 +251,7 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   // external_thermistor is 1 to read the thermistor on the gauge's TS pin, 0 to use the gauge's own
   // temperature sensor, and -1 to leave it as it is. Choose 0 when nothing is fitted: an open TS input
   // reads about -40 C and the gauge then reports "Charge inhibited".
-  bool configure_pack(int capacity_mah, int energy_mwh, int relax, int external_thermistor = -1);
+  bool configure_pack(int capacity_mah, int energy_mwh, int relax, int external_thermistor = -1, int taper_current_ma = -1);
   // Which Flags() bits pull the ALERT pin low. The gauge ships with 0, so ALERT never
   // asserts until this is written. The bit layout is the same as Flags().
   void set_alert_configuration(uint16_t mask) {
@@ -451,13 +451,15 @@ template<typename... Ts> class ConfigurePackAction : public Action<Ts...> {
   TEMPLATABLE_VALUE(uint16_t, design_energy)
   TEMPLATABLE_VALUE(bool, lifepo4_relax)
   TEMPLATABLE_VALUE(bool, external_thermistor)
+  TEMPLATABLE_VALUE(uint16_t, taper_current)
 
   void play(Ts... x) override {
     int capacity = this->design_capacity_.has_value() ? this->design_capacity_.value(x...) : -1;
     int energy = this->design_energy_.has_value() ? this->design_energy_.value(x...) : -1;
     int relax = this->lifepo4_relax_.has_value() ? (this->lifepo4_relax_.value(x...) ? 1 : 0) : -1;
     int external = this->external_thermistor_.has_value() ? (this->external_thermistor_.value(x...) ? 1 : 0) : -1;
-    this->parent_->configure_pack(capacity, energy, relax, external);
+    int taper = this->taper_current_.has_value() ? this->taper_current_.value(x...) : -1;
+    this->parent_->configure_pack(capacity, energy, relax, external, taper);
   }
 
  protected:

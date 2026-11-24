@@ -131,4 +131,7 @@ interval:
           external_thermistor: false
       - bq34z100.configure_pack:
           id: gauge_test
+          taper_current: !lambda 'return 190;'
+      - bq34z100.configure_pack:
+          id: gauge_test
           external_thermistor: !lambda 'return true;'

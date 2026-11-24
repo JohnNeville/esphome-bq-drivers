@@ -172,6 +172,10 @@ interval:
           charge_current: 750
       - bq25798.configure_battery:
           id: charger_test
+          termination_current: 80
+          max_charge_temperature: !lambda 'return 48.0f;'
+      - bq25798.configure_battery:
+          id: charger_test
           ts_ignore: true
       - bq25798.configure_battery:
           id: charger_test
