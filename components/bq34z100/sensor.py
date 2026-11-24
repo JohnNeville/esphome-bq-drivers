@@ -42,6 +42,10 @@ CONF_INITIAL_QMAX = "initial_qmax"
 CONF_CELL_CHARGE_VOLTAGE = "cell_charge_voltage"
 CONF_CELL_CHARGE_VOLTAGE_HOT = "cell_charge_voltage_hot"
 CONF_TERMINATE_VOLTAGE = "terminate_voltage"
+CONF_TAPER_CURRENT = "taper_current"
+CONF_TAPER_WINDOW = "taper_window"
+CONF_CHG_CURRENT_THRESHOLD = "chg_current_threshold"
+CONF_FC_SET = "fc_set"
 CONF_BATTERY_HIGH_VOLTAGE = "battery_high_voltage"
 CONF_CELL_COUNT = "cell_count"
 CONF_SENSE_RESISTOR = "sense_resistor"
@@ -204,6 +208,14 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_CELL_CHARGE_VOLTAGE_HOT): cv.int_range(min=1000, max=5000),
             # Cell Terminate Voltage (mV): the loaded voltage the gauge treats as 0 % (default 3000).
             cv.Optional(CONF_TERMINATE_VOLTAGE): cv.int_range(min=1000, max=3700),
+            # Charge termination. The gauge sets FC once the current stays under taper_current (mA) for taper_window (s)
+            # near the charge voltage; chg_current_threshold (mA) is the current counted as charging. fc_set is the
+            # state of charge at which FC sets (percent; -1 also waits for the taper). With lifepo4_relax on the
+            # defaults are 150 mA, 20 s, 50 mA and -1, which make FC set before a charger cut-off at 40 mA or more.
+            cv.Optional(CONF_TAPER_CURRENT): cv.int_range(min=1, max=2000),
+            cv.Optional(CONF_TAPER_WINDOW): cv.int_range(min=1, max=240),
+            cv.Optional(CONF_CHG_CURRENT_THRESHOLD): cv.int_range(min=1, max=2000),
+            cv.Optional(CONF_FC_SET): cv.int_range(min=-1, max=100),
             # Cell BH Set Volt Threshold (mV); the clear threshold is written 100 mV lower.
             cv.Optional(CONF_BATTERY_HIGH_VOLTAGE): cv.int_range(min=1000, max=5000),
             cv.Optional(CONF_CELL_COUNT): cv.int_range(min=1, max=16),
@@ -444,6 +456,14 @@ async def to_code(config):
         cg.add(var.set_cell_charge_voltage_hot(config[CONF_CELL_CHARGE_VOLTAGE_HOT]))
     if CONF_TERMINATE_VOLTAGE in config:
         cg.add(var.set_terminate_voltage(config[CONF_TERMINATE_VOLTAGE]))
+    if CONF_TAPER_CURRENT in config:
+        cg.add(var.set_taper_current(config[CONF_TAPER_CURRENT]))
+    if CONF_TAPER_WINDOW in config:
+        cg.add(var.set_taper_window(config[CONF_TAPER_WINDOW]))
+    if CONF_CHG_CURRENT_THRESHOLD in config:
+        cg.add(var.set_chg_current_threshold(config[CONF_CHG_CURRENT_THRESHOLD]))
+    if CONF_FC_SET in config:
+        cg.add(var.set_fc_set(config[CONF_FC_SET]))
     if CONF_BATTERY_HIGH_VOLTAGE in config:
         cg.add(var.set_battery_high_voltage(config[CONF_BATTERY_HIGH_VOLTAGE]))
     if CONF_CELL_COUNT in config:

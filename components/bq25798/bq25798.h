@@ -214,6 +214,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // a register reset drops the charger back to its PROG-pin defaults, which
   // for a 1s pack means 4.2 V. NAN leaves the register alone.
   void set_charge_voltage_limit(float volts) { charge_voltage_limit_ = volts; }
+  void set_lifepo4(bool on) { lifepo4_ = on; }
   void set_default_charge_current(float milliamps) { default_charge_current_ = milliamps; }
   // Cells in series behind the charge voltage limit. A runtime chemistry change scales the
   // per-cell voltage by this.
@@ -407,6 +408,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool auto_input_detection_{true};
 
   uint16_t battery_capacity_{0};
+  bool lifepo4_{false};  // LiFePO4 cells terminate at the minimum current so the gauge's taper threshold is reached first
   uint8_t cell_count_{1};
   uint16_t max_charge_current_{ICHG_MAX_MA};
   float charge_voltage_limit_{NAN};

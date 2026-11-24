@@ -726,6 +726,7 @@ async def to_code(config):
         if per_cell is None:
             per_cell = config[CONF_CELL_VOLTAGE]
         cg.add(var.set_charge_voltage_limit(per_cell * config[CONF_CELL_COUNT]))
+        cg.add(var.set_lifepo4(config[CONF_CHEMISTRY] == "lifepo4"))
     if CONF_DEFAULT_CHARGE_CURRENT in config:
         cg.add(var.set_default_charge_current(config[CONF_DEFAULT_CHARGE_CURRENT]))
     cg.add(var.set_watchdog(WATCHDOG_OPTIONS[config[CONF_WATCHDOG]]))

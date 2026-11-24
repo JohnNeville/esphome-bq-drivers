@@ -90,6 +90,12 @@ static const uint8_t OFFSET_CELL_CHARGE_VOLTAGE_T1_T2 = 17;  // U2, mV (subclass
 static const uint8_t OFFSET_CELL_CHARGE_VOLTAGE_T2_T3 = 19;  // U2, mV
 static const uint8_t OFFSET_CELL_CHARGE_VOLTAGE_T3_T4 = 21;  // U2, mV
 static const uint8_t SUBCLASS_IT_CFG = 80;
+static const uint8_t SUBCLASS_CHARGE_TERMINATION = 36;
+static const uint8_t OFFSET_TAPER_CURRENT = 0;         // I2, mA (subclass 36)
+static const uint8_t OFFSET_TAPER_WINDOW = 6;          // U1, s (subclass 36)
+static const uint8_t OFFSET_FC_SET = 9;                // I1, percent; -1 = FC also waits for the taper (subclass 36)
+static const uint8_t SUBCLASS_CURRENT_THRESHOLDS = 81;
+static const uint8_t OFFSET_CHG_CURRENT_THRESHOLD = 2; // I2, mA (subclass 81)
 static const uint8_t OFFSET_CELL_TERMINATE_VOLTAGE = 53;     // I2, mV (subclass 80)
 static const uint8_t SUBCLASS_DISCHARGE = 49;                // alert thresholds
 static const uint8_t OFFSET_CELL_BH_SET_VOLT = 13;           // I2, mV (subclass 49)
@@ -127,6 +133,10 @@ static const uint16_t FLAG_CHG = 1 << 8;
 static const uint16_t FLAG_OCVTAKEN = 1 << 7;
 static const uint16_t FLAG_ISD = 1 << 6;
 static const uint16_t FLAG_TDD = 1 << 5;
+// LiFePO4 charge-termination defaults (applied when lifepo4_relax is on and the option is not set).
+static const int16_t LIFEPO4_TAPER_CURRENT_MA = 150;
+static const int16_t LIFEPO4_TAPER_WINDOW_S = 20;
+static const int16_t LIFEPO4_CHG_CURRENT_THRESHOLD_MA = 50;
 static const uint16_t FLAG_SOC1 = 1 << 2;
 static const uint16_t FLAG_SOCF = 1 << 1;
 static const uint16_t FLAG_DSG = 1 << 0;
@@ -223,6 +233,10 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   void set_cell_charge_voltage(int16_t mv) { cell_charge_voltage_ = mv; }
   void set_cell_charge_voltage_hot(int16_t mv) { cell_charge_voltage_hot_ = mv; }
   void set_terminate_voltage(int16_t mv) { terminate_voltage_ = mv; }
+  void set_taper_current(int16_t ma) { taper_current_ = ma; }
+  void set_taper_window(int16_t s) { taper_window_ = s; }
+  void set_chg_current_threshold(int16_t ma) { chg_current_threshold_ = ma; }
+  void set_fc_set(int16_t percent) { fc_set_ = percent; fc_set_declared_ = true; }
   void set_battery_high_voltage(int16_t mv) { battery_high_voltage_ = mv; }
   void set_cell_count(uint8_t count) { cell_count_ = count; }
   void set_sense_resistor(float milliohms) { sense_resistor_ = milliohms; }
@@ -340,6 +354,11 @@ class BQ34Z100Component : public PollingComponent, public i2c::I2CDevice {
   int16_t cell_charge_voltage_{-1};
   int16_t cell_charge_voltage_hot_{-1};
   int16_t terminate_voltage_{-1};
+  int16_t taper_current_{-1};
+  int16_t taper_window_{-1};
+  int16_t chg_current_threshold_{-1};
+  int16_t fc_set_{0};
+  bool fc_set_declared_{false};
   int16_t battery_high_voltage_{-1};
   uint8_t cell_count_{0};
   float sense_resistor_{0.0f};
