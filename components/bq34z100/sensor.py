@@ -549,6 +549,7 @@ async def bq34z100_clear_alert_to_code(config, action_id, template_arg, args):
             ),
             cv.Optional(CONF_LIFEPO4_RELAX): cv.templatable(cv.boolean),
             cv.Optional(CONF_EXTERNAL_THERMISTOR): cv.templatable(cv.boolean),
+            cv.Optional(CONF_TAPER_CURRENT): cv.templatable(cv.int_range(min=1, max=2000)),
         }
     ),
     synchronous=True,
@@ -568,4 +569,7 @@ async def bq34z100_configure_pack_to_code(config, action_id, template_arg, args)
     if CONF_EXTERNAL_THERMISTOR in config:
         template_ = await cg.templatable(config[CONF_EXTERNAL_THERMISTOR], args, bool)
         cg.add(var.set_external_thermistor(template_))
+    if CONF_TAPER_CURRENT in config:
+        template_ = await cg.templatable(config[CONF_TAPER_CURRENT], args, cg.uint16)
+        cg.add(var.set_taper_current(template_))
     return var

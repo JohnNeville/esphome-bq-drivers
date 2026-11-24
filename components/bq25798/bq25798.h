@@ -90,6 +90,9 @@ static const float TDIE_STEP_C = 0.5f;        // REG41, two's complement
 static const uint16_t ICHG_MIN_MA = 50;
 static const uint16_t ICHG_MAX_MA = 5000;
 static const uint16_t ITERM_MIN_MA = 40;
+// Range of max_charge_temperature set at run time; TS_WARM can only sit at 40, 45, 50 or 55 C, and the hold must be below the highest.
+static const float MAX_CHARGE_TEMP_MIN_C = 30.0f;
+static const float MAX_CHARGE_TEMP_MAX_C = 53.0f;
 static const uint16_t ITERM_MAX_MA = 1000;
 
 // CHG_STAT, REG1C[7:5]
@@ -228,7 +231,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   // charger's battery-temperature protection, so it is only for a pack with no thermistor behind the
   // TS pin; with an open TS divider the charger reads "too cold" and never charges.
   bool configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma, int ts_ignore = -1,
-                         float cell_voltage = NAN);
+                         float cell_voltage = NAN, int termination_ma = 0, float max_charge_temp_c = NAN);
   // Hard ceiling applied to every charge-current write, including the one
   // restored at boot. Boards whose copper is rated below the IC's 5 A must
   // set this; see the SunSprout hub, which is limited to 2000 mA.
@@ -408,6 +411,7 @@ class BQ25798Component : public PollingComponent, public i2c::I2CDevice {
   bool auto_input_detection_{true};
 
   uint16_t battery_capacity_{0};
+  uint16_t termination_override_ma_{0};  // 0 = automatic (LiFePO4 minimum, otherwise C/10)
   bool lifepo4_{false};  // LiFePO4 cells terminate at the minimum current so the gauge's taper threshold is reached first
   uint8_t cell_count_{1};
   uint16_t max_charge_current_{ICHG_MAX_MA};
@@ -634,6 +638,8 @@ template<typename... Ts> class ConfigureBatteryAction : public Action<Ts...> {
   TEMPLATABLE_VALUE(uint16_t, charge_current)
   TEMPLATABLE_VALUE(bool, ts_ignore)
   TEMPLATABLE_VALUE(float, cell_voltage)
+  TEMPLATABLE_VALUE(uint16_t, termination_current)
+  TEMPLATABLE_VALUE(float, max_charge_temperature)
 
   void play(Ts... x) override {
     std::string chemistry = this->chemistry_.has_value() ? this->chemistry_.value(x...) : std::string();
@@ -641,7 +647,9 @@ template<typename... Ts> class ConfigureBatteryAction : public Action<Ts...> {
     int current = this->charge_current_.has_value() ? this->charge_current_.value(x...) : 0;
     int ts_ignore = this->ts_ignore_.has_value() ? (this->ts_ignore_.value(x...) ? 1 : 0) : -1;
     float cell_voltage = this->cell_voltage_.has_value() ? this->cell_voltage_.value(x...) : NAN;
-    this->parent_->configure_battery(chemistry, capacity, current, ts_ignore, cell_voltage);
+    int termination = this->termination_current_.has_value() ? this->termination_current_.value(x...) : 0;
+    float max_temp = this->max_charge_temperature_.has_value() ? this->max_charge_temperature_.value(x...) : NAN;
+    this->parent_->configure_battery(chemistry, capacity, current, ts_ignore, cell_voltage, termination, max_temp);
   }
 
  protected:

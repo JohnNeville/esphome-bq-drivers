@@ -182,16 +182,19 @@ void BQ25798Component::apply_battery_settings_() {
       this->charge_current_number_->publish_state(this->default_charge_current_);
   }
 
-  // Derive the termination current as C/10 when the pack size is known.
-  if (this->battery_capacity_ > 0) {
+  // Derive the termination current as C/10 when the pack size is known, or take the one the owner chose.
+  if (this->battery_capacity_ > 0 || this->termination_override_ma_ > 0) {
     // LiFePO4 holds a flat voltage until nearly full, so the C/10 cut-off arrives while the gauge still reads a middling charge
     // and never sees its taper current. The minimum (40 mA) leaves the gauge's 150 mA taper threshold well ahead of the cut-off.
-    uint16_t iterm_ma = this->lifepo4_ ? ITERM_MIN_MA : this->battery_capacity_ / 10;
+    uint16_t iterm_ma = this->termination_override_ma_ > 0
+                            ? this->termination_override_ma_
+                            : (this->lifepo4_ ? ITERM_MIN_MA : this->battery_capacity_ / 10);
     iterm_ma = clamp<uint16_t>(iterm_ma, ITERM_MIN_MA, ITERM_MAX_MA);
     uint8_t code = static_cast<uint8_t>(iterm_ma / static_cast<uint16_t>(ITERM_STEP_MA));
     this->want_iterm_code_ = code;
     this->modify_u8_(REG09_TERM, 0x1F, code);
-    ESP_LOGD(TAG, "Termination current set to %u mA (%s, %u mAh)", iterm_ma, this->lifepo4_ ? "LiFePO4 minimum" : "C/10", this->battery_capacity_);
+    ESP_LOGD(TAG, "Termination current set to %u mA (%s, %u mAh)", iterm_ma,
+             this->termination_override_ma_ > 0 ? "chosen" : (this->lifepo4_ ? "LiFePO4 minimum" : "C/10"), this->battery_capacity_);
   }
 }
 
@@ -395,7 +398,7 @@ static float chemistry_cell_voltage(const std::string &name) {
 static constexpr float CELL_VOLTAGE_UNUSUALLY_LOW_V = 0.30f;
 
 bool BQ25798Component::configure_battery(const std::string &chemistry, int capacity_mah, int charge_current_ma,
-                                         int ts_ignore, float cell_voltage) {
+                                         int ts_ignore, float cell_voltage, int termination_ma, float max_charge_temp_c) {
   float limit = this->charge_voltage_limit_;
   if (!chemistry.empty()) {
     float per_cell = chemistry_cell_voltage(chemistry);
@@ -431,6 +434,22 @@ bool BQ25798Component::configure_battery(const std::string &chemistry, int capac
     this->battery_capacity_ = clamp<int>(capacity_mah, 1, 20000);
   if (charge_current_ma > 0)
     this->default_charge_current_ = static_cast<float>(charge_current_ma);
+  // The charge-termination current the owner chose; 0 leaves the automatic one (LiFePO4 minimum, otherwise C/10).
+  this->termination_override_ma_ = termination_ma > 0 ? static_cast<uint16_t>(clamp<int>(termination_ma, ITERM_MIN_MA, ITERM_MAX_MA)) : 0;
+  // The cell's highest charging temperature. Charging is held off at it (and resumed 2 degC lower), and the charger's own
+  // warm range is moved to the first step above it (TS_WARM has 40, 45, 50 and 55 degC), so the hold acts first and the
+  // charger's JEITA setting is only the backstop.
+  if (!std::isnan(max_charge_temp_c)) {
+    float limited = clamp<float>(max_charge_temp_c, MAX_CHARGE_TEMP_MIN_C, MAX_CHARGE_TEMP_MAX_C);
+    if (limited != max_charge_temp_c)
+      ESP_LOGW(TAG, "Max charge temperature %.0f C is outside %.0f to %.0f C: using %.0f C", max_charge_temp_c,
+               MAX_CHARGE_TEMP_MIN_C, MAX_CHARGE_TEMP_MAX_C, limited);
+    this->max_charge_temp_c_ = limited;
+    this->ts_warm_code_ = limited < 40.0f ? 0 : limited < 45.0f ? 1 : limited < 50.0f ? 2 : 3;
+    this->modify_u8_(REG18_NTC_CTRL1, 0x30, static_cast<uint8_t>(this->ts_warm_code_ << 4));
+    ESP_LOGI(TAG, "Charging held off from %.0f C; the charger's warm range starts at %d C", limited,
+             40 + 5 * this->ts_warm_code_);
+  }
   this->apply_battery_settings_();
   if (ts_ignore >= 0) {
     // Kept in the member as well: configure_defaults_ writes it again after a register reset or

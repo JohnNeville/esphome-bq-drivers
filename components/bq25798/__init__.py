@@ -421,8 +421,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_TS_WARM_TEMPERATURE): cv.one_of(40, 45, 50, 55, int=True),
             # JEITA_VSET (REG17): what the charger does with the charge voltage in the warm range. The chip's
             # default is -400mv, which puts VREG below a charged cell's voltage and trips VBAT_OVP: the converter
-            # stops and the board runs from the battery. "suspend" stops charging and leaves VREG alone.
-            cv.Optional(CONF_JEITA_WARM_VOLTAGE): cv.one_of(*JEITA_WARM_VOLTAGE, lower=True),
+            # stops and the board runs from the battery. "suspend" stops charging and leaves VREG alone, and is the default
+            # here for every chemistry (a lithium-ion cell at 4.2 V - 0.4 V = 3.8 V sits below a charged cell just the same).
+            cv.Optional(CONF_JEITA_WARM_VOLTAGE, default="suspend"): cv.one_of(*JEITA_WARM_VOLTAGE, lower=True),
             # Firmware limit: stop charging (EN_CHG) at this battery temperature in degC and resume 2 degC below it.
             # The charger's own warm threshold only has 5 degC steps; this sits between them. Needs ts_resistor_upper
             # and ts_resistor_lower, which convert the TS reading to a temperature.
@@ -820,6 +821,7 @@ async def bq25798_clear_interrupts_to_code(config, action_id, template_arg, args
 RUNTIME_CHEMISTRIES = [name for name, volts in CHEMISTRY_CELL_VOLTAGE.items() if volts is not None]
 
 CONF_CHARGE_CURRENT_MA = "charge_current"
+CONF_TERMINATION_CURRENT = "termination_current"
 
 
 @automation.register_action(
@@ -841,6 +843,11 @@ CONF_CHARGE_CURRENT_MA = "charge_current"
             # Per cell, in volts. It can only lower the limit the chemistry sets: a value above it is ignored with a warning, a lower one
             # is kept (with a warning when it is more than 0.30 V under); see configure_battery in bq25798.cpp.
             cv.Optional(CONF_CELL_VOLTAGE): cv.templatable(cv.float_range(min=3.0, max=4.7)),
+            # The charge-termination current in mA (40 to 1000, in steps of 40). Left out, it is the LiFePO4 minimum or C/10.
+            cv.Optional(CONF_TERMINATION_CURRENT): cv.templatable(cv.int_range(min=40, max=1000)),
+            # The cell's highest charging temperature in degC (30 to 53): charging is held off at it and resumed 2 degC lower, and
+            # the charger's warm range is moved to the next step above it. Needs ts_resistor_upper and ts_resistor_lower.
+            cv.Optional(CONF_MAX_CHARGE_TEMPERATURE): cv.templatable(cv.float_range(min=30, max=53)),
         }
     ),
     synchronous=True,
@@ -863,4 +870,10 @@ async def bq25798_configure_battery_to_code(config, action_id, template_arg, arg
     if CONF_CELL_VOLTAGE in config:
         template_ = await cg.templatable(config[CONF_CELL_VOLTAGE], args, cg.float_)
         cg.add(var.set_cell_voltage(template_))
+    if CONF_TERMINATION_CURRENT in config:
+        template_ = await cg.templatable(config[CONF_TERMINATION_CURRENT], args, cg.uint16)
+        cg.add(var.set_termination_current(template_))
+    if CONF_MAX_CHARGE_TEMPERATURE in config:
+        template_ = await cg.templatable(config[CONF_MAX_CHARGE_TEMPERATURE], args, cg.float_)
+        cg.add(var.set_max_charge_temperature(template_))
     return var
